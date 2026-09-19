@@ -1,3 +1,10 @@
+window.addEventListener('error', (e) => {
+  document.body.innerHTML = `<div style="color:red;padding:20px;font-size:16px;background:#fff;">
+    <h3>خطأ تشغيل في React:</h3>
+    <p>${e.message}</p>
+    <p>الملف: ${e.filename}:${e.lineno}</p>
+  </div>`;
+});
 import { StrictMode, Component, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
