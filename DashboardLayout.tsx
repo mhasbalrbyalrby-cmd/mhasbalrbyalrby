@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useTheme } from '@/lib/theme-context';
-import { useAuth } from '@/lib/auth-context';
+import { useI18n } from './i18n-context';
+import { useTheme } from './theme-context';
+import { useAuth } from './auth-context';
 import {
   LayoutDashboard, Users, FileText, Receipt, Calculator,
   Package, ArrowLeftRight, BarChart3, Clock, Settings,
