@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
-import type { Party, PartyRole, PartyRoleType } from '@/types/database';
-import Modal from '@/components/Modal';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { Party, PartyRole, PartyRoleType } from './database';
+import Modal from './Modal';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2,
   AlertCircle, User, Building2, CheckCircle2,
