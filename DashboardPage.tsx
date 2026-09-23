@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
 import {
   FileText, Receipt, Users, Package, ArrowLeftRight,
   Clock, TrendingUp, AlertCircle, CheckCircle2, Loader2,
