@@ -1,9 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useI18n } from './i18n-context';
 import { useAuth } from './auth-context';
 import { supabase } from './supabase';
-import type { Receipt } from './database';
+import type { Receipt, Party, ReceiptType, ReceiptStatus } from './database';
 import Modal from './Modal';
-import Modal from '@/components/Modal';
 import {
   Receipt as ReceiptIcon, Plus, Search, Loader2, AlertCircle,
   CheckCircle2, XCircle, Eye, Trash2,
