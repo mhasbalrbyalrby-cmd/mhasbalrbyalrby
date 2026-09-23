@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
-import type { ChartOfAccount, JournalEntry, JournalLine, AccountType } from '@/types/database';
-import Modal from '@/components/Modal';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { ChartOfAccount, JournalEntry, JournalLine, AccountType } from './database';
+import Modal from './Modal';
 import {
   Calculator, Plus, Search, Pencil, Trash2, Loader2,
   AlertCircle, BookOpen, FileText, CheckCircle2, XCircle, Lock,
@@ -571,13 +571,6 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
                   );
                 })}
               </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-[var(--color-border)] font-bold">
-                  <td colSpan={2} className="py-2 text-end">{lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
-                  <td className="py-2 text-end text-[var(--color-text)]">{lines.reduce((s, l) => s + l.debit, 0).toFixed(2)}</td>
-                  <td className="py-2 text-end text-[var(--color-text)]">{lines.reduce((s, l) => s + l.credit, 0).toFixed(2)}</td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         )}
