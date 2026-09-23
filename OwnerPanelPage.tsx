@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '../lib/i18n-context';
-import { useAuth } from '../lib/auth-context';
-import { supabase } from '../lib/supabase';
-import type { Tenant, SubscriptionPlan, AuditLog } from '../types/database';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { Tenant, SubscriptionPlan, AuditLog } from './database';
 import {
   Building2, CreditCard, FileBarChart, Users, Settings,
   BookOpen, Shield, Loader2, AlertCircle,
