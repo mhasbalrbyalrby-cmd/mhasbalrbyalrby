@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { ExchangeRate, Currency } from './database';
 import type { ExchangeTransfer, Party, TransferStatus } from '@/types/database';
 import Modal from '@/components/Modal';
 import {
