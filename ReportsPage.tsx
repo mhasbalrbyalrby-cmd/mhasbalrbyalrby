@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
 import type { ChartOfAccount, JournalLine } from '@/types/database';
 import {
   BarChart3, Loader2, FileText, Scale, Wallet, TrendingUp, BookOpen,
