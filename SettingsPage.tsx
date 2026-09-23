@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useTheme } from '@/lib/theme-context';
-import { useAuth } from '@/lib/auth-context';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { Tenant } from './database';
 import { supabase } from '@/lib/supabase';
 import {
   Settings, Building2, MapPin, Coins, Save, Loader2,
