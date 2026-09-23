@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/context/i18n-context';
-import { useAuth } from '@/context/auth-context';
-import { supabase } from '@/lib/supabase';
+import { useI18n } from '@/i18n-context';
+import { useAuth } from '@/auth-context';
+import { supabase } from '@/supabase';
 import type { Shift, ShiftStatus } from '@/types/database';
 import Modal from '@/components/Modal';
 import {
