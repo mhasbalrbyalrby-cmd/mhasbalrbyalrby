@@ -2,7 +2,7 @@ import { useI18n } from './i18n-context';
 import { useAuth } from './auth-context';
 import { supabase } from './supabase';
 import type { Tenant } from './database';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/supabase';
 import {
   Settings, Building2, MapPin, Coins, Save, Loader2,
   AlertCircle, CheckCircle2, Sun, Moon, Contrast, Globe,
