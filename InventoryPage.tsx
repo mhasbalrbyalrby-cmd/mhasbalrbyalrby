@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse, UnitOfMeasure } from '@/types/database';
-import Modal from '@/components/Modal';
+import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { Product, InventoryMovement } from './database';
+import Modal from './Modal';
 import {
-  Package, Plus, Search, Pencil, Trash2, Loader2, AlertCircle, Boxes,
+  Package, Plus, Search, Loader2, AlertCircle, ArrowUpRight, ArrowDownLeft,
 } from 'lucide-react';
 
 export default function InventoryPage() {
