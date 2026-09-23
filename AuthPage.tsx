@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { useI18n } from '@/lib/i18n-context';
-import { useTheme } from '@/lib/theme-context';
-import { supabase } from '@/lib/supabase';
+import { useI18n } from './i18n-context';
+import { useTheme } from './theme-context';
+import { supabase } from './supabase';
 import { Calculator, Sun, Moon, Contrast, Globe, Loader2, AlertCircle } from 'lucide-react';
 
 export default function AuthPage() {
