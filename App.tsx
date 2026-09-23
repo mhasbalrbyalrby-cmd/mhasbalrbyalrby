@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { I18nProvider } from '@/lib/i18n-context';
-import { ThemeProvider } from '@/lib/theme-context';
-import AuthPage from '@/components/AuthPage';
-import DashboardLayout from '@/components/DashboardLayout';
-import DashboardPage from '@/pages/DashboardPage';
-import OwnerPanelPage from '@/pages/OwnerPanelPage';
-import KnowledgeCenterPage from '@/pages/KnowledgeCenterPage';
-import ContactsPage from '@/pages/ContactsPage';
-import AccountingPage from '@/pages/AccountingPage';
-import InvoicesPage from '@/pages/InvoicesPage';
-import InventoryPage from '@/pages/InventoryPage';
-import ReceiptsPage from '@/pages/ReceiptsPage';
-import ExchangePage from '@/pages/ExchangePage';
-import ShiftsPage from '@/pages/ShiftsPage';
-import SettingsPage from '@/pages/SettingsPage';
-import ReportsPage from '@/pages/ReportsPage';
+import { AuthProvider, useAuth } from './lib/auth-context';
+import { I18nProvider } from './lib/i18n-context';
+import { ThemeProvider } from './lib/theme-context';
+import AuthPage from './components/AuthPage';
+import DashboardLayout from './components/DashboardLayout';
+import DashboardPage from './pages/DashboardPage';
+import OwnerPanelPage from './pages/OwnerPanelPage';
+import KnowledgeCenterPage from './pages/KnowledgeCenterPage';
+import ContactsPage from './pages/ContactsPage';
+import AccountingPage from './pages/AccountingPage';
+import InvoicesPage from './pages/InvoicesPage';
+import InventoryPage from './pages/InventoryPage';
+import ReceiptsPage from './pages/ReceiptsPage';
+import ExchangePage from './pages/ExchangePage';
+import ShiftsPage from './pages/ShiftsPage';
+import SettingsPage from './pages/SettingsPage';
+import ReportsPage from './pages/ReportsPage';
 import { Loader2 } from 'lucide-react';
 
 function AppContent() {
