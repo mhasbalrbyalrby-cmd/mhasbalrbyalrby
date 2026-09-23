@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { useI18n } from './i18n-context';
-import { supabase } from '@/lib/supabase';
-import type { KnowledgeArticle } from '@/types/database';
+;import { useI18n } from './i18n-context';
+import { useAuth } from './auth-context';
+import { supabase } from './supabase';
+import type { Article, Category } from './database';
 import {
   BookOpen, Loader2, Search, FileText, CheckCircle2,
   Clock, AlertCircle, Circle,
