@@ -9,7 +9,8 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-export default function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+// يدعم الاستيراد المسمى (Named Import): import { Modal } from './components/Modal'
+export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   if (!open) return null;
 
   const maxW = size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : 'max-w-md';
@@ -29,3 +30,6 @@ export default function Modal({ open, onClose, title, children, size = 'md' }: M
     </div>
   );
 }
+
+// يدعم الاستيراد الافتراضي (Default Import): import Modal from './components/Modal'
+export default Modal;
