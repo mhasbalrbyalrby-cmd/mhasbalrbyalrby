@@ -3,7 +3,7 @@ import { useI18n } from './i18n-context';
 import { useAuth } from './auth-context';
 import { supabase } from './supabase';
 import type { Shift, ShiftStatus } from './types/database';
-import Modal from './Modal';
+import Modal from '../components/Modal'; // تم تعديل المسار هنا ليصل لمجلد components
 import {
   Clock, Plus, Loader2, AlertCircle, Play, Square, XCircle,
 } from 'lucide-react';
