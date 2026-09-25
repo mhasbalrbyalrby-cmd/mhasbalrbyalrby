@@ -481,3 +481,13 @@ export interface ExchangeTransfer {
   created_at: string;
   updated_at: string;
 }
+export interface AIMessage {
+  id: string;
+  tenant_id: string;
+  sender_number: string;
+  raw_text: string;
+  image_url?: string;
+  parsed_data?: Record<string, unknown>;
+  status: 'pending' | 'processed' | 'failed';
+  created_at: string;
+}
