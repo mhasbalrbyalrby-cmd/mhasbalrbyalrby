@@ -9,7 +9,7 @@ import OwnerPanelPage from '@/pages/OwnerPanelPage';
 import KnowledgeCenterPage from '@/pages/KnowledgeCenterPage';
 import ContactsPage from '@/pages/ContactsPage';
 import AccountingPage from '@/pages/AccountingPage';
-import InvoicesPage from '@/pages/InvoicesPage';
+import import InvoicesPage from './pages/InvoicesPage';
 import InventoryPage from '@/pages/InventoryPage';
 import ReceiptsPage from '@/pages/ReceiptsPage';
 import ExchangePage from '@/pages/ExchangePage';
