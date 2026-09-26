@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '../lib/i18n-context';
-import { useAuth } from '../lib/auth-context';
-import { supabase } from '../lib/supabase';
-import type { KnowledgeArticle } from '../lib/database';
+import { useI18n } from '@/lib/i18n-context';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
+import type { KnowledgeArticle } from '@/lib/database';
 import {
   BookOpen, Loader2, Search, FileText, CheckCircle2,
   Clock, AlertCircle, Circle,
@@ -87,7 +87,6 @@ export default function KnowledgeCenterPage() {
         </div>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--color-text-muted)]" />
         <input
@@ -99,7 +98,6 @@ export default function KnowledgeCenterPage() {
         />
       </div>
 
-      {/* Category filters */}
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setActiveCategory(null)}
@@ -130,7 +128,6 @@ export default function KnowledgeCenterPage() {
         })}
       </div>
 
-      {/* Articles */}
       {selectedArticle ? (
         <div className="card animate-slide-up">
           <div className="flex items-start justify-between mb-4">
