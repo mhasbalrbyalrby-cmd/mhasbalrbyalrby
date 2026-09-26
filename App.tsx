@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DashboardPage from '@/pages/DashboardPage';
 import OwnerPanelPage from '@/pages/OwnerPanelPage';
 import KnowledgeCenterPage from '@/pages/KnowledgeCenterPage';
-import ContactsPage from '@/ContactsPage';
+import ContactsPage from '@/pages/ContactsPage';
 import AccountingPage from '@/pages/AccountingPage';
 import InvoicesPage from '@/pages/InvoicesPage';
 import InventoryPage from '@/pages/InventoryPage';
