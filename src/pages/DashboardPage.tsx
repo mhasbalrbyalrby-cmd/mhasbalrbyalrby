@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
-import { supabase } from '../lib/supabaseClient'; // أو '../lib/supabase' حسب الاسم لديك
+import { supabase } from '../lib/supabase'; // أو '../lib/supabaseClient' حسب تسمية الملف لديك
 import {
   FileText, Receipt, Users, Package, ArrowLeftRight,
   Clock, TrendingUp, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react';
 
 function statusAr(status: string): string {
-  const map: Record<string, string> = { active: 'نشط', trial: 'تجريبي', suspended: 'موقوف', expired: 'منتهي', cancelled: 'ملغي', pending: 'معلّق' };
+  const map: Record<string, string> = { 
+    active: 'نشط', 
+    trial: 'تجريبي', 
+    suspended: 'موقوف', 
+    expired: 'منتهي', 
+    cancelled: 'ملغي', 
+    pending: 'معلّق' 
+  };
   return map[status] ?? status;
 }
 
