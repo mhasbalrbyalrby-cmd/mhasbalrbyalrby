@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { supabase } from '../supabaseClient'; // تم ضبط المسار ليتوافق مع هيكلة المجلدات لديك
 import type { Profile, Tenant, TenantMember, Role } from '../types/database';
 
 interface AuthContextValue {
