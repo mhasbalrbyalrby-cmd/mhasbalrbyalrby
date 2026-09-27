@@ -3,7 +3,7 @@ import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from './supabase';
 import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus } from './database';
-import Modal from './Modal';
+import Modal from '../components/Modal';
 import {
   FileText, Plus, Search, Pencil, Trash2, Loader2, AlertCircle,
   CheckCircle2, XCircle, Eye,
