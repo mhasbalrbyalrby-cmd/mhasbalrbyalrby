@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
-import { useAuth } from './auth-context';
+import { useAuth } from '../lib/auth-context';
 import { supabase } from './supabase';
 import type { Party, PartyRole, PartyRoleType } from './database';
 import Modal from './Modal';
