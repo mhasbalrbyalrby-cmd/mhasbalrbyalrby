@@ -3,7 +3,7 @@ import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from './supabase';
 import type { Party, PartyRole, PartyRoleType } from './database';
-import Modal from './Modal';
+import Modal from '../components/Modal';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2,
   AlertCircle, User, Building2, CheckCircle2,
