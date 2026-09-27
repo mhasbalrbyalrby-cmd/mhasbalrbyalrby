@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
-import ... from '../lib/auth-context';
+import { useAuth } from '../lib/auth-context';
 import { useTheme } from './theme-context';
 import { supabase } from './supabase';
 import type { Tenant } from './types/database';
