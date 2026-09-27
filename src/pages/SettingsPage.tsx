@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from './i18n-context';
+import { useI18n } from '../lib/i18n-context';
 import { useAuth } from './auth-context';
 import { useTheme } from './theme-context';
 import { supabase } from './supabase';
