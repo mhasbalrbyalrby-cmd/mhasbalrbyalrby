@@ -15,9 +15,11 @@ import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import KnowledgeCenterPage from './pages/KnowledgeCenterPage';
 import OwnerPanelPage from './pages/OwnerPanelPage';
-import BiometricsPage from './pages/Biometrics';
 import ShiftsPage from './pages/ShiftsPage';
 import PrepaidCardsPage from './pages/PrepaidCardsPage';
+
+// Direct import for Biometrics
+import BiometricsPage from './Biometrics';
 
 function MainApp() {
   const { user, loading } = useAuth();
