@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
-import { supabase } from './supabase';
+import { supabase } from '../lib/supabase';
 import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus } from './database';
 import Modal from '../components/Modal';
 import {
