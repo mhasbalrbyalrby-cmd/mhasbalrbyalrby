@@ -20,7 +20,9 @@ export function Modal({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -40,15 +42,22 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
-  let maxW = 'max-w-md';
+  let maxWClass = 'max-w-md';
 
   if (size === 'sm') {
-    maxW = 'max-w-sm';
+    maxWClass = 'max-w-sm';
   } else if (size === 'lg') {
-    maxW = 'max-w-2xl';
+    maxWClass = 'max-w-2xl';
   }
+
+  const modalClassName =
+    'relative w-full ' +
+    maxWClass +
+    ' card shadow-xl animate-scale-in max-h-[90vh] overflow-y-auto';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -59,7 +68,7 @@ export function Modal({
       />
 
       <div
-        className={`relative w-full ${maxW} card shadow-xl animate-scale-in max-h-[90vh] overflow-y-auto`}
+        className={modalClassName}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
