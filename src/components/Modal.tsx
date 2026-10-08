@@ -1,4 +1,3 @@
-
 ```tsx
 import { type ReactNode, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
@@ -43,18 +42,16 @@ export function Modal({
 
   if (!open) return null;
 
-  const maxW =
-    size === 'sm'
-      ? 'max-w-sm'
-      : size === 'lg'
-        ? 'max-w-2xl'
-        : 'max-w-md';
+  let maxW = 'max-w-md';
+
+  if (size === 'sm') {
+    maxW = 'max-w-sm';
+  } else if (size === 'lg') {
+    maxW = 'max-w-2xl';
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="presentation"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-black/50 animate-fade-in"
         onClick={onClose}
