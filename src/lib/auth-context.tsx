@@ -65,10 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!profileData.tenant_id) {
-        setTenant(null);
-        setTenantMember(nullحسابك      setRole(null);
-        setIsOwner(false);
-        setAuthError('no_tenant');
+        setTenant(null)
+      setAuthError('no_tenant');
         return;
       }
 
