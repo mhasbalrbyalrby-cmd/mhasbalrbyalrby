@@ -1,4 +1,5 @@
-عنimport { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase, supabaseConfigError } from './supabase';
 import type { Profile, Tenant, TenantMember, Role } from '@/types/database';
