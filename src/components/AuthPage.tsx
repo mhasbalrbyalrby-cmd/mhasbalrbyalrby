@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { useI18n } from '../lib/i18n-context';
-import { useTheme } from '../lib/theme-context';
-import { supabase } from '../lib/supabase';
-import { Calculator, Sun, Moon, Contrast, Globe, Loader2, AlertCircle } from 'lucide-react';
+import { useI18n } from '@/lib/i18n-context';
+import { useTheme } from '@/lib/theme-context';
+import { supabase } from '@/lib/supabase';
+import { Calculator, Sun, Moon, Contrast, Globe, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 
-export default function AuthPage() {
+export default function AuthPage({ onGuestTour }: { onGuestTour?: () => void }) {
   const { t, lang, setLang } = useI18n();
   const { mode, setMode } = useTheme();
   const [isLogin, setIsLogin] = useState(true);
@@ -41,7 +41,10 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName } },
+          options: {
+            data: { full_name: fullName },
+            emailRedirectTo: window.location.origin,
+          },
         });
         if (error) throw error;
         setSuccess(t('auth.signup_success'));
@@ -108,6 +111,16 @@ export default function AuthPage() {
                 {t('app.tagline')}
               </p>
             </div>
+
+            {onGuestTour && (
+              <button
+                onClick={onGuestTour}
+                className="w-full mb-4 py-2.5 rounded-lg border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400 text-sm font-medium hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                {lang === 'ar' ? 'جولة تعريفية قبل التسجيل' : 'Take a tour before signing up'}
+              </button>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm rounded-lg px-3 py-2 mb-4 animate-fade-in">
