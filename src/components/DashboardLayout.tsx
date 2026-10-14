@@ -1,13 +1,14 @@
-import { useState, type ReactNode } from 'react';
-import { useI18n } from '../lib/i18n-context';
-import { useTheme } from '../lib/theme-context';
-import { useAuth } from '../lib/auth-context';
+import { useState, useEffect, type ReactNode } from 'react';
+import { useI18n } from '@/lib/i18n-context';
+import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
 import {
   LayoutDashboard, Users, FileText, Receipt, Calculator,
   Package, ArrowLeftRight, BarChart3, Clock, Settings,
-  Shield, BookOpen, Menu, X, Sun, Moon, Contrast, Globe,
-  LogOut, ChevronDown,
+  Shield, BookOpen, Brain, Menu, X, Sun, Moon, Contrast, Globe,
+  LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface NavItem {
   code: string;
@@ -26,9 +27,15 @@ const navItems: NavItem[] = [
   { code: 'exchange', icon: ArrowLeftRight, labelKey: 'nav.exchange' },
   { code: 'reports', icon: BarChart3, labelKey: 'nav.reports' },
   { code: 'shifts', icon: Clock, labelKey: 'nav.shifts' },
+  { code: 'zakat', icon: HandCoins, labelKey: 'nav.zakat' },
+  { code: 'fuel', icon: Fuel, labelKey: 'nav.fuel' },
+  { code: 'inheritance', icon: ScrollText, labelKey: 'nav.inheritance' },
+  { code: 'fixed_assets', icon: Building, labelKey: 'nav.fixed_assets' },
   { code: 'settings', icon: Settings, labelKey: 'nav.settings' },
   { code: 'knowledge', icon: BookOpen, labelKey: 'nav.knowledge_center' },
+  { code: 'help', icon: HelpCircle, labelKey: 'nav.user_guide' },
   { code: 'owner', icon: Shield, labelKey: 'nav.owner_panel', ownerOnly: true },
+  { code: 'memory', icon: Brain, labelKey: 'nav.project_memory', ownerOnly: true },
 ];
 
 interface DashboardLayoutProps {
@@ -40,11 +47,59 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ activeModule, onNavigate, children }: DashboardLayoutProps) {
   const { t, lang, setLang } = useI18n();
   const { mode, setMode } = useTheme();
-  const { profile, tenant, isOwner, signOut } = useAuth();
+  const { profile, tenant, isOwner, role, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [enabledAddons, setEnabledAddons] = useState<Set<string>>(new Set());
 
-  const visibleItems = navItems.filter((item) => !item.ownerOnly || isOwner);
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('tenant_modules')
+        .select('module_id, is_enabled, modules!inner(code)')
+        .eq('tenant_id', profile.tenant_id!)
+        .eq('is_enabled', true);
+      if (cancelled || !data) return;
+      const rows = (data ?? []) as { module_id: string; is_enabled: boolean; modules: { code: string }[] | { code: string } }[];
+      const codes = new Set<string>();
+      rows.forEach((tm) => {
+        const mod = Array.isArray(tm.modules) ? tm.modules[0] : tm.modules;
+        if (mod?.code) codes.add(mod.code);
+      });
+      setEnabledAddons(codes);
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.tenant_id]);
+
+  const roleName = role?.name ?? (isOwner ? 'owner' : 'employee');
+
+  const roleModules: Record<string, string[]> = {
+    owner: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'inventory', 'exchange', 'reports', 'shifts', 'zakat', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help', 'owner', 'memory'],
+    admin: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'inventory', 'exchange', 'reports', 'shifts', 'zakat', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help'],
+    accountant: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'reports', 'zakat', 'fixed_assets', 'settings', 'knowledge', 'help'],
+    manager: ['dashboard', 'contacts', 'invoices', 'receipts', 'inventory', 'exchange', 'reports', 'shifts', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help'],
+    sales: ['dashboard', 'contacts', 'invoices', 'receipts', 'inventory', 'shifts', 'help'],
+    purchasing: ['dashboard', 'contacts', 'invoices', 'inventory', 'help'],
+    warehouse: ['dashboard', 'inventory', 'help'],
+    cashier: ['dashboard', 'receipts', 'shifts', 'exchange', 'help'],
+    exchange_agent: ['dashboard', 'exchange', 'shifts', 'help'],
+    auditor: ['dashboard', 'reports', 'accounting', 'knowledge', 'help'],
+    employee: ['dashboard', 'help'],
+  };
+
+  const ADDON_CODES = new Set(['zakat', 'fuel', 'inheritance']);
+  const isModuleEnabled = (code: string) => {
+    if (!ADDON_CODES.has(code)) return true;
+    if (isOwner) return true;
+    return enabledAddons.has(code);
+  };
+
+  const allowedModules = roleModules[roleName] ?? roleModules.employee;
+  const visibleItems = navItems.filter((item) =>
+    (!item.ownerOnly || isOwner) && allowedModules.includes(item.code) && isModuleEnabled(item.code)
+  );
   const activeItem = visibleItems.find((i) => i.code === activeModule);
 
   return (
