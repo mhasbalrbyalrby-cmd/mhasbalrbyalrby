@@ -25,16 +25,28 @@ export default function OnboardingPage() {
     setLoading(true);
     setError('');
     try {
-      const { error: rpcError } = await supabase.rpc('create_tenant_for_user', {
+      const { data: tenantId, error: rpcError } = await supabase.rpc('create_tenant_with_owner', {
         p_name: name.trim(),
-        p_name_ar: nameAr.trim() || null,
+        p_name_ar: nameAr.trim() || name.trim(),
         p_phone: phone.trim() || null,
         p_address: address.trim() || null,
       });
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        console.error('create_tenant_with_owner RPC error:', rpcError);
+        throw rpcError;
+      }
+      if (!tenantId) {
+        throw new Error(lang === 'ar' ? 'لم يتم إنشاء المؤسسة — يرجى المحاولة مرة أخرى' : 'Tenant was not created — please try again');
+      }
+      console.log('Tenant created successfully:', tenantId);
       await refreshProfile();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('error.generic'));
+      console.error('Onboarding submit error:', err);
+      const message = err instanceof Error
+        ? err.message
+        : (err as { message?: string })?.message
+          ?? t('error.generic');
+      setError(message);
     } finally {
       setLoading(false);
     }
