@@ -1,25 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useI18n } from '../lib/i18n-context';
-import { useAuth } from '../lib/auth-context';
-import { supabase } from '../lib/supabase'; // أو '../lib/supabaseClient' حسب تسمية الملف لديك
+import { useI18n } from '@/lib/i18n-context';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 import {
   FileText, Receipt, Users, Package, ArrowLeftRight,
   Clock, TrendingUp, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react';
 
-function statusAr(status: string): string {
-  const map: Record<string, string> = { 
-    active: 'نشط', 
-    trial: 'تجريبي', 
-    suspended: 'موقوف', 
-    expired: 'منتهي', 
-    cancelled: 'ملغي', 
-    pending: 'معلّق' 
-  };
-  return map[status] ?? status;
+interface DashboardPageProps {
+  onNavigate?: (code: string) => void;
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const { t, lang } = useI18n();
   const { profile, tenant, isOwner } = useAuth();
   const [stats, setStats] = useState({ invoices: '—', receipts: '—', customers: '—', products: '—' });
@@ -30,6 +22,8 @@ export default function DashboardPage() {
       const tid = profile?.tenant_id;
       if (!tid) { setLoading(false); return; }
       const today = new Date().toISOString().slice(0, 10);
+      const { data: partyIds } = await supabase.from('parties').select('id').eq('tenant_id', tid);
+      const partyIdList = (partyIds ?? []).map((p: { id: string }) => p.id);
       const [
         { count: invCount },
         { count: rcCount },
@@ -38,7 +32,9 @@ export default function DashboardPage() {
       ] = await Promise.all([
         supabase.from('invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('date', today),
         supabase.from('receipts').select('*', { count: 'exact', head: true }).eq('tenant_id', tid).eq('date', today),
-        supabase.from('party_roles').select('*', { count: 'exact', head: true }).eq('role', 'customer').in('party_id', (await supabase.from('parties').select('id').eq('tenant_id', tid)).data?.map((p: { id: string }) => p.id) ?? []),
+        partyIdList.length > 0
+          ? supabase.from('party_roles').select('*', { count: 'exact', head: true }).eq('role', 'customer').in('party_id', partyIdList)
+          : Promise.resolve({ count: 0, error: null, data: null, status: 200, statusText: '' } as { count: number | null; error: unknown; data: unknown; status: number; statusText: string }),
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('tenant_id', tid),
       ]);
       setStats({
@@ -60,10 +56,10 @@ export default function DashboardPage() {
   ];
 
   const quickActions = [
-    { icon: FileText, label: lang === 'ar' ? 'فاتورة جديدة' : 'New Invoice', color: 'primary' },
-    { icon: Receipt, label: lang === 'ar' ? 'سند قبض' : 'Receipt', color: 'secondary' },
-    { icon: ArrowLeftRight, label: lang === 'ar' ? 'حوالة جديدة' : 'New Transfer', color: 'accent' },
-    { icon: Clock, label: lang === 'ar' ? 'فتح وردية' : 'Open Shift', color: 'success' },
+    { icon: FileText, label: lang === 'ar' ? 'فاتورة جديدة' : 'New Invoice', color: 'primary', module: 'invoices' },
+    { icon: Receipt, label: lang === 'ar' ? 'سند قبض' : 'Receipt', color: 'secondary', module: 'receipts' },
+    { icon: ArrowLeftRight, label: lang === 'ar' ? 'حوالة جديدة' : 'New Transfer', color: 'accent', module: 'exchange' },
+    { icon: Clock, label: lang === 'ar' ? 'فتح وردية' : 'Open Shift', color: 'success', module: 'shifts' },
   ];
 
   if (loading) {
@@ -117,7 +113,11 @@ export default function DashboardPage() {
           {quickActions.map((action, i) => {
             const Icon = action.icon;
             return (
-              <button key={i} className="card flex flex-col items-center gap-2 hover:border-primary-400 transition-colors group">
+              <button
+                key={i}
+                onClick={() => onNavigate?.(action.module)}
+                className="card flex flex-col items-center gap-2 hover:border-primary-400 transition-colors group cursor-pointer"
+              >
                 <div className={`w-12 h-12 rounded-xl bg-${action.color}-100 dark:bg-${action.color}-900/30 flex items-center justify-center group-hover:scale-110 transition-transform`}>
                   <Icon className={`w-6 h-6 text-${action.color}-600 dark:text-${action.color}-400`} />
                 </div>
@@ -182,4 +182,9 @@ export default function DashboardPage() {
       )}
     </div>
   );
+}
+
+function statusAr(status: string): string {
+  const map: Record<string, string> = { active: 'نشط', trial: 'تجريبي', suspended: 'موقوف', expired: 'منتهي', cancelled: 'ملغي', pending: 'معلّق' };
+  return map[status] ?? status;
 }
