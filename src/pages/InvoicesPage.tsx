@@ -119,12 +119,97 @@ export default function InvoicesPage() {
   const taxAmount = (form.type === 'sale' || form.type === 'return_sale') ? afterDiscount * taxRate : 0;
   const total = afterDiscount + taxAmount;
 
+  ```tsx
   async function handleSave() {
-    if (!profile?.tenant_id) return;
+    if (!profile?.tenant_id) {
+      setError(
+        lang === 'ar'
+          ? 'تعذر تحديد المنشأة الحالية. يرجى تحديث الجلسة والمحاولة مجددًا.'
+          : 'Unable to determine the current tenant. Refresh the session and try again.'
+      );
+      return;
+    }
+
     if (!form.party_id) {
       setError(lang === 'ar' ? 'اختر جهة الاتصال' : 'Select a contact');
       return;
     }
+
+    if (
+      form.lines.length === 0 ||
+      form.lines.every((l) => !l.description.trim() && !l.product_id)
+    ) {
+      setError(lang === 'ar' ? 'أضف سطرًا واحدًا على الأقل' : 'Add at least one line');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const invNumber = `INV-${Date.now()}-${Math.floor(
+        Math.random() * 1000
+      ).toString().padStart(3, '0')}`;
+
+      const invoicePayload = {
+        invoice_number: invNumber,
+        type: form.type,
+        party_id: form.party_id,
+        date: form.date,
+        due_date: form.due_date || null,
+        currency: form.currency,
+        discount_amount: Number(form.discount_amount) || 0,
+        notes: form.notes.trim() || null,
+        warehouse_id: form.warehouse_id || null,
+        shift_id: form.shift_id || null,
+      };
+
+      const linesPayload = form.lines.map((line) => ({
+        product_id: line.product_id || null,
+        description: line.description.trim() || null,
+        quantity: Number(line.quantity),
+        unit_price: Number(line.unit_price),
+        discount_amount: Number(line.discount_amount) || 0,
+      }));
+
+      const { data, error: saveError } = await supabase.rpc(
+        'create_invoice_draft_atomic',
+        {
+          p_invoice: invoicePayload,
+          p_lines: linesPayload,
+        }
+      );
+
+      if (saveError) throw saveError;
+
+      const result = data as {
+        success?: boolean;
+        invoice_id?: string;
+        invoice_number?: string;
+      };
+
+      if (!result?.success || !result.invoice_id) {
+        throw new Error(
+          lang === 'ar'
+            ? 'لم تؤكد قاعدة البيانات حفظ الفاتورة.'
+            : 'The database did not confirm that the invoice was saved.'
+        );
+      }
+
+      setModalOpen(false);
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t('error.generic')
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+```
+
     if (form.lines.length === 0 || form.lines.every((l) => !l.description && !l.product_id)) {
       setError(lang === 'ar' ? 'أضف سطرًا واحدًا على الأقل' : 'Add at least one line');
       return;
