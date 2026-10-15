@@ -208,67 +208,7 @@ export default function InvoicesPage() {
       setSaving(false);
     }
   }
-```
 
-    if (form.lines.length === 0 || form.lines.every((l) => !l.description && !l.product_id)) {
-      setError(lang === 'ar' ? 'أضف سطرًا واحدًا على الأقل' : 'Add at least one line');
-      return;
-    }
-
-    setSaving(true);
-    setError('');
-
-    try {
-      const invNumber = `INV-${Date.now()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-      const { data: inv, error: invErr } = await supabase
-        .from('invoices')
-        .insert({
-          tenant_id: profile.tenant_id,
-          invoice_number: invNumber,
-          type: form.type,
-          party_id: form.party_id,
-          date: form.date,
-          due_date: form.due_date || null,
-          currency: form.currency,
-          subtotal,
-          discount_amount: invoiceDiscount,
-          tax_amount: taxAmount,
-          total,
-          status: 'draft',
-          notes: form.notes.trim() || null,
-          warehouse_id: form.warehouse_id || null,
-          shift_id: form.shift_id || null,
-          created_by: profile.id,
-        })
-        .select()
-        .single();
-
-      if (invErr) throw invErr;
-      const invId = (inv as Invoice).id;
-
-      const linePayloads = form.lines.map((l, i) => ({
-        invoice_id: invId,
-        tenant_id: profile.tenant_id,
-        product_id: l.product_id || null,
-        description: l.description || null,
-        quantity: Number(l.quantity) || 1,
-        unit_price: Number(l.unit_price) || 0,
-        discount_amount: Number(l.discount_amount) || 0,
-        line_total: (Number(l.quantity) || 1) * (Number(l.unit_price) || 0) - (Number(l.discount_amount) || 0),
-        line_order: i,
-      }));
-
-      const { error: linesErr } = await supabase.from('invoice_lines').insert(linePayloads);
-      if (linesErr) throw linesErr;
-
-      setModalOpen(false);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('error.generic'));
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function postInvoice(inv: Invoice) {
     if (!profile) return;
