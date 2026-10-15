@@ -119,7 +119,7 @@ export default function InvoicesPage() {
   const taxAmount = (form.type === 'sale' || form.type === 'return_sale') ? afterDiscount * taxRate : 0;
   const total = afterDiscount + taxAmount;
 
-  ```tsx
+  
   async function handleSave() {
     if (!profile?.tenant_id) {
       setError(
