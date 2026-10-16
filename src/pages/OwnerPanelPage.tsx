@@ -137,7 +137,8 @@ function TenantsTab({
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [newPlanId, setNewPlanId] = useState('');
   const [newStatus, setNewStatus] = useState<string>('active');
-
+const [newTenantName, setNewTenantName] = useState('');
+const [newTenantNameAr, setNewTenantNameAr] = useState('');
   async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) return;
     setActionLoading(tenant.id);
