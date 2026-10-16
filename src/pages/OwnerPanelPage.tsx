@@ -140,37 +140,20 @@ const [newTenantName, setNewTenantName] = useState('');
 const [newTenantNameAr, setNewTenantNameAr] = useState('');
   async function handleStatusChange(tenant: Tenant, status: string) {
     
-  async function handlePlanChange() {
-    if (!selectedTenant) return;
-
-    if (selectedTenant.is_owner) {
-      setError(lang === 'ar' ? 'لا يمكن تعديل مؤسسة مالك النظام.' : 'The system owner tenant cannot be modified.');
+  async function handleStatusChange(tenant: Tenant, status: string) {
+    if (tenant.is_owner) {
+      setError(lang === 'ar' ? 'لا يمكن تعديل حالة مؤسسة مالك النظام.' : 'The system owner tenant cannot be modified.');
       return;
     }
 
-    const tenantName = newTenantName.trim();
-    const tenantNameAr = newTenantNameAr.trim();
-
-    if (!tenantName) {
-      setError(lang === 'ar' ? 'اسم المؤسسة مطلوب.' : 'Tenant name is required.');
-      return;
-    }
-
-    setActionLoading(selectedTenant.id);
+    setActionLoading(tenant.id);
     setError('');
-
-    let saved = false;
 
     try {
       const { data, error: updateError } = await supabase
         .from('tenants')
-        .update({
-          name: tenantName,
-          name_ar: tenantNameAr || null,
-          plan_id: newPlanId || null,
-          status: newStatus,
-        })
-        .eq('id', selectedTenant.id)
+        .update({ status })
+        .eq('id', tenant.id)
         .eq('is_owner', false)
         .select('id')
         .maybeSingle();
@@ -180,55 +163,36 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
       if (!data) {
         throw new Error(
           lang === 'ar'
-            ? 'لم يتم حفظ التعديلات. تحقق من صلاحيات قاعدة البيانات.'
-            : 'Changes were not saved. Check database permissions.'
+            ? 'لم يتم تحديث المؤسسة. تحقق من الصلاحيات.'
+            : 'Tenant was not updated. Check permissions.'
         );
       }
 
-      saved = true;
-
       const { error: auditError } = await supabase.from('audit_logs').insert({
-        action: 'update_tenant_plan',
+        action: 'update_tenant_status',
         entity_type: 'tenant',
-        entity_id: selectedTenant.id,
-        entity_name: tenantName,
-        old_values: {
-          name: selectedTenant.name,
-          name_ar: selectedTenant.name_ar,
-          plan_id: selectedTenant.plan_id,
-          status: selectedTenant.status,
-        },
-        new_values: {
-          name: tenantName,
-          name_ar: tenantNameAr || null,
-          plan_id: newPlanId || null,
-          status: newStatus,
-        },
+        entity_id: tenant.id,
+        entity_name: tenant.name,
+        old_values: { status: tenant.status },
+        new_values: { status },
         user_id: userId,
       });
 
-      setPlanModalOpen(false);
       await onRefresh();
 
       if (auditError) {
         setError(
           lang === 'ar'
-            ? 'تم حفظ التعديلات، لكن تعذر تسجيلها في سجل التدقيق.'
-            : 'Changes were saved, but the audit log could not be saved.'
+            ? 'تم تحديث الحالة، لكن تعذر تسجيل العملية في سجل التدقيق.'
+            : 'Status updated, but the audit log could not be saved.'
         );
       }
     } catch (err) {
-      setError(
-        saved
-          ? (lang === 'ar'
-              ? 'تم حفظ التعديلات، لكن حدث خطأ لاحق أثناء تحديث العرض.'
-              : 'Changes were saved, but an error occurred while refreshing the view.')
-          : (err instanceof Error ? err.message : 'Error')
-      );
-
-      if (saved) {
-        setPlanModalOpen(false);
-      }
+      setError(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setActionLoading(null);
+    }
+  }
     } finally {
       setActionLoading(null);
     }
