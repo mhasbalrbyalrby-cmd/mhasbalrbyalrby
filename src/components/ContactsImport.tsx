@@ -32,6 +32,9 @@ export default function ContactsImport({ onImport, onClose }: Props) {
   const [invalidCount, setInvalidCount] = useState(0);
   const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [importRole, setImportRole] = useState<
+  'customer' | 'supplier' | 'both'
+>('customer');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
