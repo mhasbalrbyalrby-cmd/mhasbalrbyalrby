@@ -97,7 +97,12 @@ export default function ContactsImport({ onImport, onClose }: Props) {
     setError('');
 
     try {
-      await onImport(rows);
+      await onImport(
+  rows,
+  importRole === 'both'
+    ? ['customer', 'supplier']
+    : [importRole]
+);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل الاستيراد. لم يتم تأكيد نجاح الحفظ.');
