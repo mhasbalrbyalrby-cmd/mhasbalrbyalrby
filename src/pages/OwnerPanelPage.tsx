@@ -139,10 +139,7 @@ function TenantsTab({
 const [newTenantName, setNewTenantName] = useState('');
 const [newTenantNameAr, setNewTenantNameAr] = useState('');
   async function handleStatusChange(tenant: Tenant, status: string) {
-    
-  async functionconst [newTenantNameAr, setNewTenantNameAr] = useState('');
-
-  async function handleStatusChange(tenant: Tenant, status: string) {
+ async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) {
       setError(
         lang === 'ar'
