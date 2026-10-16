@@ -163,34 +163,98 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
     }
   }
 
+  
+
   async function handlePlanChange() {
     if (!selectedTenant) return;
+
+    if (selectedTenant.is_owner) {
+      setError('لا يمكن تعديل مؤسسة مالك النظام.');
+      return;
+    }
+
+    const tenantName = newTenantName.trim();
+    const tenantNameAr = newTenantNameAr.trim() || null;
+
+    if (!tenantName) {
+      setError('اسم المؤسسة مطلوب.');
+      return;
+    }
+
     setActionLoading(selectedTenant.id);
     setError('');
+
+    let saved = false;
+
     try {
-      const { error: e } = await supabase.from('tenants').update({
-        plan_id: newPlanId || null,
-        status: newStatus,
-      }).eq('id', selectedTenant.id);
-      if (e) throw e;
-      await supabase.from('audit_logs').insert({
-        action: 'update_tenant_plan',
-        entity_type: 'tenant',
-        entity_id: selectedTenant.id,
-        entity_name: selectedTenant.name,
-        old_values: { plan_id: selectedTenant.plan_id, status: selectedTenant.status },
-        new_values: { plan_id: newPlanId || null, status: newStatus },
-        user_id: userId,
-      });
+      const { data, error: updateError } = await supabase
+        .from('tenants')
+        .update({
+          name: tenantName,
+          name_ar: tenantNameAr,
+          plan_id: newPlanId || null,
+          status: newStatus,
+        })
+        .eq('id', selectedTenant.id)
+        .eq('is_owner', false)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      if (!data) {
+        throw new Error(
+          'لم يتم تحديث المؤسسة. تحقق من صلاحيات قاعدة البيانات وسياسات RLS.'
+        );
+      }
+
+      saved = true;
+
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          action: 'update_tenant_plan',
+          entity_type: 'tenant',
+          entity_id: selectedTenant.id,
+          entity_name: tenantName,
+          old_values: {
+            name: selectedTenant.name,
+            name_ar: selectedTenant.name_ar,
+            plan_id: selectedTenant.plan_id,
+            status: selectedTenant.status,
+          },
+          new_values: {
+            name: tenantName,
+            name_ar: tenantNameAr,
+            plan_id: newPlanId || null,
+            status: newStatus,
+          },
+          user_id: userId,
+        });
+
+      if (auditError) {
+        throw new Error(
+          'تم حفظ بيانات المؤسسة، لكن فشل سجل التدقيق: ' +
+            auditError.message
+        );
+      }
+
       setPlanModalOpen(false);
-      onRefresh();
+      setSelectedTenant(null);
+      await onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+      const message =
+        err instanceof Error ? err.message : 'تعذر حفظ التعديلات.';
+
+      setError(
+        saved
+          ? `تم حفظ البيانات، لكن حدثت مشكلة لاحقة: ${message}`
+          : message
+      );
     } finally {
       setActionLoading(null);
     }
   }
-
   function openPlanModal(tenant: Tenant) {
     setSelectedTenant(tenant);
     setNewPlanId(tenant.plan_id ?? '');
