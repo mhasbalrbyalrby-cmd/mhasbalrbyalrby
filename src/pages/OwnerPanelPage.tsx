@@ -117,29 +117,33 @@ export default function OwnerPanelPage() {
           {tab === 'plans' && <PlansTab plans={plans} lang={lang} />}
           {tab === 'cards' && <CardsTab lang={lang} />}
           {tab === 'audit' && <AuditTab logs={logs} lang={lang} onRefresh={loadData} />}
-          {tab === 'settings' && <SystemSettingsTab lang={lang} />}
-        </>
-      )}
-    </div>
-  );
-}
-
+       ```tsx
 // ──────────────────────────────────────────────────────────────
 // Tenants Tab — with activate / suspend / change plan
 // ──────────────────────────────────────────────────────────────
 function TenantsTab({
-  tenants, plans, lang, onRefresh, userId,
-}: { tenants: Tenant[]; plans: SubscriptionPlan[]; lang: string; onRefresh: () => void; userId: string | null }) {
+  tenants,
+  plans,
+  lang,
+  onRefresh,
+  userId,
+}: {
+  tenants: Tenant[];
+  plans: SubscriptionPlan[];
+  lang: string;
+  onRefresh: () => void;
+  userId: string | null;
+}) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [newPlanId, setNewPlanId] = useState('');
   const [newStatus, setNewStatus] = useState<string>('active');
-const [newTenantName, setNewTenantName] = useState('');
-const [newTenantNameAr, setNewTenantNameAr] = useState('');
+  const [newTenantName, setNewTenantName] = useState('');
+  const [newTenantNameAr, setNewTenantNameAr] = useState('');
+
   async function handleStatusChange(tenant: Tenant, status: string) {
- async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) {
       setError(
         lang === 'ar'
@@ -216,9 +220,9 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
     setNewStatus(tenant.status);
     setError('');
     setPlanModalOpen(true);
-  }  (tenant: Tenant) {
-    setSelectedTenant(tenant);
-    setNewPlanId(tenant.plan_id ?? '');
+  }
+```
+
     setNewStatus(tenant.status);
     setError('');
     setPlanModalOpen(true);
