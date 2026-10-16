@@ -116,8 +116,16 @@ export default function OwnerPanelPage() {
           {tab === 'modules' && <ModulesTab lang={lang} tenants={tenants} userId={profile?.id ?? null} />}
           {tab === 'plans' && <PlansTab plans={plans} lang={lang} />}
           {tab === 'cards' && <CardsTab lang={lang} />}
-          {tab === 'audit' && <AuditTab logs={logs} lang={lang} onRefresh={loadData} />}
-       ```tsx
+                   {tab === 'audit' && (
+            <AuditTab logs={logs} lang={lang} onRefresh={loadData} />
+          )}
+          {tab === 'settings' && <SystemSettingsTab lang={lang} />}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────
 // Tenants Tab — with activate / suspend / change plan
 // ──────────────────────────────────────────────────────────────
@@ -140,8 +148,6 @@ function TenantsTab({
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [newPlanId, setNewPlanId] = useState('');
   const [newStatus, setNewStatus] = useState<string>('active');
-  const [newTenantName, setNewTenantName] = useState('');
-  const [newTenantNameAr, setNewTenantNameAr] = useState('');
 
   async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) {
@@ -203,6 +209,94 @@ function TenantsTab({
     }
   }
 
+  function openPlanModal(tenant: Tenant) {
+    if (tenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
+    setSelectedTenant(tenant);
+    setNewPlanId(tenant.plan_id ?? '');
+    setNewStatus(tenant.status);
+    setError('');
+    setPlanModalOpen(true);
+  }
+
+  async function handlePlanChange() {
+    if (!selectedTenant) return;
+
+    if (selectedTenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
+    setActionLoading(selectedTenant.id);
+    setError('');
+
+    try {
+      const { data, error: updateError } = await supabase
+        .from('tenants')
+        .update({
+          plan_id: newPlanId || null,
+          status: newStatus,
+        })
+        .eq('id', selectedTenant.id)
+        .eq('is_owner', false)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      if (!data) {
+        throw new Error(
+          lang === 'ar'
+            ? 'لم يتم حفظ التغييرات. تحقق من الصلاحيات.'
+            : 'Changes were not saved. Check permissions.'
+        );
+      }
+
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          action: 'update_tenant_plan',
+          entity_type: 'tenant',
+          entity_id: selectedTenant.id,
+          entity_name: selectedTenant.name,
+          old_values: {
+            plan_id: selectedTenant.plan_id,
+            status: selectedTenant.status,
+          },
+          new_values: {
+            plan_id: newPlanId || null,
+            status: newStatus,
+          },
+          user_id: userId,
+        });
+
+      setPlanModalOpen(false);
+      await onRefresh();
+
+      if (auditError) {
+        setError(
+          lang === 'ar'
+            ? 'تم الحفظ، لكن تعذر تسجيل العملية في سجل التدقيق.'
+            : 'Changes saved, but the audit log could not be saved.'
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setActionLoading(null);
+    }
+  } setAct
   function openPlanModal(tenant: Tenant) {
     if (tenant.is_owner) {
       setError(
