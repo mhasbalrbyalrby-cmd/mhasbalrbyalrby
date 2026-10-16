@@ -121,14 +121,6 @@ export default function ContactsImport({ onImport, onClose }: Props) {
         <h3 className="text-lg font-bold">استيراد العملاء والموردين</h3>
         <button type="button" className="btn-secondary" onClick={onClose}>
           إغلاق
-        </button>
-      </div>
-
-      <p className="text-sm text-[var(--color-text-muted)]">
-        اختر ملف CSV بترميز UTF-8. يجب أن يحتوي الصف الأول على أسماء الأعمدة.
-        يمكنك استخدام أسماء الأعمدة العربية أو الإنجليزية المعروفة.
-      </p>
-
       <input
         type="file"
         accept=".csv,text/csv"
