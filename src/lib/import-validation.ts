@@ -43,6 +43,7 @@ export function validateImportRows(
   }
 
   const resolved = new Map<string, string>();
+  let missingRequiredColumn = false;
 
   for (const field of fields) {
     const candidates = [field.key, ...(field.headers ?? [])];
@@ -53,6 +54,7 @@ export function validateImportRows(
     if (match) {
       resolved.set(field.key, availableHeaders.get(match)!);
     } else if (field.required) {
+      missingRequiredColumn = true;
       issues.push({
         row: 1,
         field: field.key,
@@ -111,8 +113,12 @@ export function validateImportRows(
 
   return {
     rows,
-    validRows: rows.filter((_, index) => !invalidRows.has(index + 2)),
+    validRows: missingRequiredColumn
+      ? []
+      : rows.filter((_, index) => !invalidRows.has(index + 2)),
     issues,
-    invalidRowCount: invalidRows.size,
+    invalidRowCount: missingRequiredColumn
+      ? rows.length
+      : invalidRows.size,
   };
 }
