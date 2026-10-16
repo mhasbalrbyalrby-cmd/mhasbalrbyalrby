@@ -4,7 +4,7 @@ import { parseCSV } from '../lib/csv';
 import { validateImportRows, type ImportRow } from '../lib/import-validation';
 
 interface Props {
-  onImport: (rows: ImportRow[]) => Promise<void>;
+onImport: (rows: ImportRow[], roles: ('customer' | 'supplier')[]) => Promise<void>;
   onClose: () => void;
 }
 
