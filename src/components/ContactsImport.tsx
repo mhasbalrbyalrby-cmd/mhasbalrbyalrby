@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { parseCSV } from '../lib/csv';
 import { validateImportRows, type ImportRow } from '../lib/import-validation';
 
+type ImportRole = 'customer' | 'supplier';
+
 interface Props {
-onImport: (rows: ImportRow[], roles: ('customer' | 'supplier')[]) => Promise<void>;
+  onImport: (rows: ImportRow[], roles: ImportRole[]) => Promise<void>;
   onClose: () => void;
 }
 
@@ -33,8 +35,8 @@ export default function ContactsImport({ onImport, onClose }: Props) {
   const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
   const [importRole, setImportRole] = useState<
-  'customer' | 'supplier' | 'both'
->('customer');
+    'customer' | 'supplier' | 'both'
+  >('customer');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -43,6 +45,7 @@ export default function ContactsImport({ onImport, onClose }: Props) {
     setRows([]);
     setIssues([]);
     setInvalidCount(0);
+    setFileName('');
 
     if (!file) return;
 
@@ -69,10 +72,12 @@ export default function ContactsImport({ onImport, onClose }: Props) {
         const result = validateImportRows(parsed, fields, ['id_number']);
 
         setRows(result.validRows);
-        setIssues(result.issues.map((issue) => ({
-          row: issue.row,
-          message: issue.message,
-        })));
+        setIssues(
+          result.issues.map((issue) => ({
+            row: issue.row,
+            message: issue.message,
+          }))
+        );
         setInvalidCount(result.invalidRowCount);
 
         if (result.issues.some((issue) => issue.row === 1)) {
@@ -94,22 +99,32 @@ export default function ContactsImport({ onImport, onClose }: Props) {
   }
 
   async function confirmImport() {
-    if (rows.length === 0 || issues.some((issue) => issue.row === 1)) return;
+    if (
+      rows.length === 0 ||
+      issues.some((issue) => issue.row === 1) ||
+      saving ||
+      loading
+    ) {
+      return;
+    }
 
     setSaving(true);
     setError('');
 
+    const roles: ImportRole[] =
+      importRole === 'both'
+        ? ['customer', 'supplier']
+        : [importRole];
+
     try {
-      await onImport(
-        await onImport(
-        rows,
-        importRole === 'both'
-          ? ['customer', 'supplier']
-          : [importRole]
-      );
+      await onImport(rows, roles);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل الاستيراد. لم يتم تأكيد نجاح الحفظ.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'فشل الاستيراد. لم يتم تأكيد نجاح الحفظ.'
+      );
     } finally {
       setSaving(false);
     }
@@ -119,8 +134,42 @@ export default function ContactsImport({ onImport, onClose }: Props) {
     <section className="card space-y-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-lg font-bold">استيراد العملاء والموردين</h3>
-        <button type="button" className="btn-secondary" onClick={onClose}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={onClose}
+          disabled={saving}
+        >
           إغلاق
+        </button>
+      </div>
+
+      <p className="text-sm text-[var(--color-text-muted)]">
+        اختر ملف CSV بترميز UTF-8. يجب أن يحتوي الصف الأول على أسماء الأعمدة.
+        يمكنك استخدام أسماء الأعمدة العربية أو الإنجليزية المعروفة.
+      </p>
+
+      <div className="space-y-1">
+        <label htmlFor="import-role" className="text-sm font-medium">
+          نوع البيانات المستوردة
+        </label>
+        <select
+          id="import-role"
+          className="input-field"
+          value={importRole}
+          onChange={(event) =>
+            setImportRole(
+              event.target.value as 'customer' | 'supplier' | 'both'
+            )
+          }
+          disabled={loading || saving}
+        >
+          <option value="customer">العملاء فقط</option>
+          <option value="supplier">الموردون فقط</option>
+          <option value="both">العملاء والموردون</option>
+        </select>
+      </div>
+
       <input
         type="file"
         accept=".csv,text/csv"
@@ -133,7 +182,9 @@ export default function ContactsImport({ onImport, onClose }: Props) {
       {loading && <p>جارٍ قراءة الملف والتحقق من البيانات...</p>}
 
       {error && (
-        <p role="alert" className="text-sm text-error-500">{error}</p>
+        <p role="alert" className="text-sm text-error-500">
+          {error}
+        </p>
       )}
 
       {rows.length > 0 && (
@@ -155,7 +206,10 @@ export default function ContactsImport({ onImport, onClose }: Props) {
               </thead>
               <tbody>
                 {rows.slice(0, 10).map((row, index) => (
-                  <tr key={`${row.name}-${index}`} className="border-t border-[var(--color-border)]">
+                  <tr
+                    key={`${row.name}-${index}`}
+                    className="border-t border-[var(--color-border)]"
+                  >
                     <td className="p-2">{row.name}</td>
                     <td className="p-2">{row.phone}</td>
                     <td className="p-2">{row.email}</td>
@@ -189,16 +243,28 @@ export default function ContactsImport({ onImport, onClose }: Props) {
       )}
 
       <div className="flex justify-end gap-2">
-        <button type="button" className="btn-secondary" onClick={onClose}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={onClose}
+          disabled={saving}
+        >
           إلغاء
         </button>
         <button
           type="button"
           className="btn-primary"
-          disabled={saving || loading || rows.length === 0 || issues.some((issue) => issue.row === 1)}
+          disabled={
+            saving ||
+            loading ||
+            rows.length === 0 ||
+            issues.some((issue) => issue.row === 1)
+          }
           onClick={confirmImport}
         >
-          {saving ? 'جارٍ الحفظ...' : `تأكيد استيراد ${rows.length} صف`}
+          {saving
+            ? 'جارٍ الحفظ...'
+            : `تأكيد استيراد ${rows.length} صف`}
         </button>
       </div>
     </section>
