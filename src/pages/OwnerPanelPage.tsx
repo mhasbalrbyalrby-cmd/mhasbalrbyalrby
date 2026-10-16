@@ -139,44 +139,20 @@ function TenantsTab({
 const [newTenantName, setNewTenantName] = useState('');
 const [newTenantNameAr, setNewTenantNameAr] = useState('');
   async function handleStatusChange(tenant: Tenant, status: string) {
-    if (tenant.is_owner) return;
-    setActionLoading(tenant.id);
-    setError('');
-    try {
-      const { error: e } = await supabase.from('tenants').update({ status }).eq('id', tenant.id);
-      if (e) throw e;
-      await supabase.from('audit_logs').insert({
-        action: 'update_tenant_status',
-        entity_type: 'tenant',
-        entity_id: tenant.id,
-        entity_name: tenant.name,
-        old_values: { status: tenant.status },
-        new_values: { status },
-        user_id: userId,
-      });
-      onRefresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  
-
+    
   async function handlePlanChange() {
     if (!selectedTenant) return;
 
     if (selectedTenant.is_owner) {
-      setError('لا يمكن تعديل مؤسسة مالك النظام.');
+      setError(lang === 'ar' ? 'لا يمكن تعديل مؤسسة مالك النظام.' : 'The system owner tenant cannot be modified.');
       return;
     }
 
     const tenantName = newTenantName.trim();
-    const tenantNameAr = newTenantNameAr.trim() || null;
+    const tenantNameAr = newTenantNameAr.trim();
 
     if (!tenantName) {
-      setError('اسم المؤسسة مطلوب.');
+      setError(lang === 'ar' ? 'اسم المؤسسة مطلوب.' : 'Tenant name is required.');
       return;
     }
 
@@ -190,7 +166,7 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
         .from('tenants')
         .update({
           name: tenantName,
-          name_ar: tenantNameAr,
+          name_ar: tenantNameAr || null,
           plan_id: newPlanId || null,
           status: newStatus,
         })
@@ -203,53 +179,56 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
 
       if (!data) {
         throw new Error(
-          'لم يتم تحديث المؤسسة. تحقق من صلاحيات قاعدة البيانات وسياسات RLS.'
+          lang === 'ar'
+            ? 'لم يتم حفظ التعديلات. تحقق من صلاحيات قاعدة البيانات.'
+            : 'Changes were not saved. Check database permissions.'
         );
       }
 
       saved = true;
 
-      const { error: auditError } = await supabase
-        .from('audit_logs')
-        .insert({
-          action: 'update_tenant_plan',
-          entity_type: 'tenant',
-          entity_id: selectedTenant.id,
-          entity_name: tenantName,
-          old_values: {
-            name: selectedTenant.name,
-            name_ar: selectedTenant.name_ar,
-            plan_id: selectedTenant.plan_id,
-            status: selectedTenant.status,
-          },
-          new_values: {
-            name: tenantName,
-            name_ar: tenantNameAr,
-            plan_id: newPlanId || null,
-            status: newStatus,
-          },
-          user_id: userId,
-        });
-
-      if (auditError) {
-        throw new Error(
-          'تم حفظ بيانات المؤسسة، لكن فشل سجل التدقيق: ' +
-            auditError.message
-        );
-      }
+      const { error: auditError } = await supabase.from('audit_logs').insert({
+        action: 'update_tenant_plan',
+        entity_type: 'tenant',
+        entity_id: selectedTenant.id,
+        entity_name: tenantName,
+        old_values: {
+          name: selectedTenant.name,
+          name_ar: selectedTenant.name_ar,
+          plan_id: selectedTenant.plan_id,
+          status: selectedTenant.status,
+        },
+        new_values: {
+          name: tenantName,
+          name_ar: tenantNameAr || null,
+          plan_id: newPlanId || null,
+          status: newStatus,
+        },
+        user_id: userId,
+      });
 
       setPlanModalOpen(false);
-      setSelectedTenant(null);
       await onRefresh();
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'تعذر حفظ التعديلات.';
 
+      if (auditError) {
+        setError(
+          lang === 'ar'
+            ? 'تم حفظ التعديلات، لكن تعذر تسجيلها في سجل التدقيق.'
+            : 'Changes were saved, but the audit log could not be saved.'
+        );
+      }
+    } catch (err) {
       setError(
         saved
-          ? `تم حفظ البيانات، لكن حدثت مشكلة لاحقة: ${message}`
-          : message
+          ? (lang === 'ar'
+              ? 'تم حفظ التعديلات، لكن حدث خطأ لاحق أثناء تحديث العرض.'
+              : 'Changes were saved, but an error occurred while refreshing the view.')
+          : (err instanceof Error ? err.message : 'Error')
       );
+
+      if (saved) {
+        setPlanModalOpen(false);
+      }
     } finally {
       setActionLoading(null);
     }
