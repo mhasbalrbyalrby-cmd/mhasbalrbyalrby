@@ -21,7 +21,8 @@ export default function OwnerPanelPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
+  const [newTenantName, setNewTenantName] = useState('');
+  const [newTenantNameAr, setNewTenantNameAr] = useState('');
   useEffect(() => {
     if (!isOwner) return;
     loadData();
