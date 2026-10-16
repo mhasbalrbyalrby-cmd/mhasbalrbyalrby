@@ -140,9 +140,15 @@ const [newTenantName, setNewTenantName] = useState('');
 const [newTenantNameAr, setNewTenantNameAr] = useState('');
   async function handleStatusChange(tenant: Tenant, status: string) {
     
+  async functionconst [newTenantNameAr, setNewTenantNameAr] = useState('');
+
   async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) {
-      setError(lang === 'ar' ? 'لا يمكن تعديل حالة مؤسسة مالك النظام.' : 'The system owner tenant cannot be modified.');
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل حالة مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
       return;
     }
 
@@ -168,15 +174,17 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
         );
       }
 
-      const { error: auditError } = await supabase.from('audit_logs').insert({
-        action: 'update_tenant_status',
-        entity_type: 'tenant',
-        entity_id: tenant.id,
-        entity_name: tenant.name,
-        old_values: { status: tenant.status },
-        new_values: { status },
-        user_id: userId,
-      });
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          action: 'update_tenant_status',
+          entity_type: 'tenant',
+          entity_id: tenant.id,
+          entity_name: tenant.name,
+          old_values: { status: tenant.status },
+          new_values: { status },
+          user_id: userId,
+        });
 
       await onRefresh();
 
@@ -193,11 +201,25 @@ const [newTenantNameAr, setNewTenantNameAr] = useState('');
       setActionLoading(null);
     }
   }
-    } finally {
-      setActionLoading(null);
-    }
-  }
+
   function openPlanModal(tenant: Tenant) {
+    if (tenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
+    setSelectedTenant(tenant);
+    setNewTenantName(tenant.name ?? '');
+    setNewTenantNameAr(tenant.name_ar ?? '');
+    setNewPlanId(tenant.plan_id ?? '');
+    setNewStatus(tenant.status);
+    setError('');
+    setPlanModalOpen(true);
+  }  (tenant: Tenant) {
     setSelectedTenant(tenant);
     setNewPlanId(tenant.plan_id ?? '');
     setNewStatus(tenant.status);
