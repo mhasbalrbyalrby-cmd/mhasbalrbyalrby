@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -54,12 +54,17 @@ export default function FuelPage() {
   const [vForm, setVForm] = useState({ plate_number: '', make: '', model: '', model_year: 0, fuel_type: 'diesel', current_odometer: 0 });
   const [fForm, setFForm] = useState({ vehicle_id: '', date: new Date().toISOString().slice(0, 10), liters: 0, price_per_liter: 0, odometer: 0, station: '', notes: '' });
 
-  useEffect(() => { loadData(); }, []);
+  const ar = lang === 'ar';
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const tid = profile?.tenant_id;
-    if (!tid) { setLoading(false); return; }
+    if (!tid) {
+      setVehicles([]);
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
     try {
       const [{ data: v, error: vehiclesError }, { data: f, error: fuelError }] = await Promise.all([
         supabase.from('vehicles').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
@@ -75,9 +80,10 @@ export default function FuelPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [profile?.tenant_id, ar]);
 
-  const ar = lang === 'ar';
+  useEffect(() => { void loadData(); }, [loadData]);
+
   const fuelTotal = fForm.liters * fForm.price_per_liter;
 
   async function saveVehicle() {
