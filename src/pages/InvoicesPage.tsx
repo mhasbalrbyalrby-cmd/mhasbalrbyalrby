@@ -35,6 +35,7 @@ export default function InvoicesPage() {
   const [viewLines, setViewLines] = useState<InvoiceLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const [form, setForm] = useState({
     type: 'sale' as InvoiceType,
@@ -49,27 +50,46 @@ export default function InvoicesPage() {
     lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] as FormLine[],
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { void loadData(); }, [profile?.tenant_id]);
 
   async function loadData() {
     setLoading(true);
+    setLoadError('');
     const tenantId = profile?.tenant_id;
-    if (!tenantId) { setLoading(false); return; }
+    if (!tenantId) {
+      setInvoices([]);
+      setParties([]);
+      setProducts([]);
+      setWarehouses([]);
+      setShifts([]);
+      setLoading(false);
+      if (profile) setLoadError(lang === 'ar' ? 'حسابك غير مرتبط بمؤسسة؛ تعذر تحميل الفواتير.' : 'Your account is not linked to a tenant; invoices cannot be loaded.');
+      return;
+    }
 
-    const [{ data: invData }, { data: partyData }, { data: prodData }, { data: whData }, { data: shiftData }] = await Promise.all([
-      supabase.from('invoices').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
-      supabase.from('parties').select('*').eq('tenant_id', tenantId),
-      supabase.from('products').select('*').eq('tenant_id', tenantId).eq('is_active', true),
-      supabase.from('warehouses').select('*').eq('tenant_id', tenantId).eq('is_active', true),
-      supabase.from('shifts').select('*').eq('tenant_id', tenantId).eq('status', 'open').order('start_time', { ascending: false }),
-    ]);
-
-    setInvoices((invData as Invoice[]) ?? []);
-    setParties((partyData as Party[]) ?? []);
-    setProducts((prodData as Product[]) ?? []);
-    setWarehouses((whData as Warehouse[]) ?? []);
-    setShifts((shiftData as Shift[]) ?? []);
-    setLoading(false);
+    try {
+      const results = await Promise.all([
+        supabase.from('invoices').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
+        supabase.from('parties').select('*').eq('tenant_id', tenantId),
+        supabase.from('products').select('*').eq('tenant_id', tenantId).eq('is_active', true),
+        supabase.from('warehouses').select('*').eq('tenant_id', tenantId).eq('is_active', true),
+        supabase.from('shifts').select('*').eq('tenant_id', tenantId).eq('status', 'open').order('start_time', { ascending: false }),
+      ]);
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+      const [invResult, partyResult, prodResult, whResult, shiftResult] = results;
+      setInvoices((invResult.data as Invoice[]) ?? []);
+      setParties((partyResult.data as Party[]) ?? []);
+      setProducts((prodResult.data as Product[]) ?? []);
+      setWarehouses((whResult.data as Warehouse[]) ?? []);
+      setShifts((shiftResult.data as Shift[]) ?? []);
+    } catch (err) {
+      console.error('[InvoicesPage] Failed to load invoice data:', err);
+      setInvoices([]);
+      setLoadError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تحميل بيانات الفواتير.' : 'Could not load invoice data.'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openCreate() {
@@ -266,6 +286,14 @@ export default function InvoicesPage() {
           <option value="return_purchase">{lang === 'ar' ? 'مرتجع مشتريات' : 'Return Purchase'}</option>
         </select>
       </div>
+
+      {loadError && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-error-300 bg-error-50 dark:bg-error-900/20 px-4 py-3 text-sm text-error-700 dark:text-error-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div><p className="font-semibold">{lang === 'ar' ? 'تعذر تحميل الفواتير' : 'Could not load invoices'}</p><p>{loadError}</p></div>
+          <button onClick={() => void loadData()} className="ms-auto underline">{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</button>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="card text-center py-12 text-[var(--color-text-muted)]">{t('common.no_data')}</div>
