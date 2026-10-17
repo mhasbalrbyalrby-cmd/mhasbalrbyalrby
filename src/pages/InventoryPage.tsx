@@ -6,7 +6,7 @@ import type { Product, Warehouse, UnitOfMeasure, ProductUnit, StockMovement } fr
 import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
-  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera,
+  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera, Flashlight,
 } from 'lucide-react';
 
 function generateInternalBarcode(usedBarcodes: Set<string>): string {
@@ -54,6 +54,9 @@ export default function InventoryPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState('');
   const [scannerStarting, setScannerStarting] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [form, setForm] = useState({
@@ -86,6 +89,8 @@ export default function InventoryPage() {
     let frameId = 0;
     setScannerError('');
     setScannerStarting(true);
+    setTorchSupported(false);
+    setTorchOn(false);
 
     type DetectedBarcode = { rawValue: string };
     type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
@@ -110,6 +115,10 @@ export default function InventoryPage() {
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
         });
+        const cameraTrack = stream.getVideoTracks()[0] ?? null;
+        cameraTrackRef.current = cameraTrack;
+        const cameraCapabilities = cameraTrack?.getCapabilities() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+        setTorchSupported(Boolean(cameraCapabilities?.torch));
         if (!active) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -149,10 +158,26 @@ export default function InventoryPage() {
       active = false;
       window.cancelAnimationFrame(frameId);
       if (stream) stream.getTracks().forEach((track) => track.stop());
+      cameraTrackRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
     };
   }, [scannerOpen, lang]);
 
+
+  async function toggleTorch() {
+    const track = cameraTrackRef.current;
+    if (!track || !torchSupported) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet] });
+      setTorchOn((current) => !current);
+      setScannerError('');
+    } catch (torchError) {
+      setScannerError(lang === 'ar'
+        ? 'تعذر تشغيل الفلاش؛ قد لا يدعمه الجهاز أو المتصفح.'
+        : 'Could not toggle the flashlight; this device or browser may not support it.');
+      console.warn('[InventoryPage] Camera torch unavailable:', torchError);
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -617,7 +642,7 @@ export default function InventoryPage() {
           </div>
           {scannerStarting && <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="w-4 h-4 animate-spin" />{lang === 'ar' ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</div>}
           {scannerError && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 p-3 text-sm"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{scannerError}</span></div>}
-          <div className="flex justify-end"><button type="button" onClick={() => setScannerOpen(false)} className="btn-secondary">{t('common.cancel')}</button></div>
+          <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => void toggleTorch()} disabled={!torchSupported || scannerStarting} className="btn-secondary flex items-center gap-2 disabled:opacity-40" title={lang === 'ar' ? 'تشغيل/إيقاف الفلاش' : 'Toggle flashlight'}><Flashlight className="w-4 h-4" />{torchOn ? (lang === 'ar' ? 'إيقاف الفلاش' : 'Turn flash off') : (lang === 'ar' ? 'تشغيل الفلاش' : 'Turn flash on')}</button><button type="button" onClick={() => setScannerOpen(false)} className="btn-secondary">{t('common.cancel')}</button></div>
         </div>
       </Modal>
 
