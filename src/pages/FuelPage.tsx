@@ -275,9 +275,10 @@ export default function FuelPage() {
           </div>
           <div className="p-3 rounded-lg bg-[var(--color-bg)] flex justify-between"><span className="text-sm font-medium text-[var(--color-text-muted)]">{ar ? 'التكلفة الإجمالية' : 'Total Cost'}</span><span className="font-bold text-warning-600">{fuelTotal.toFixed(2)}</span></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'العدّاد' : 'Odometer'}</label><input type="number" value={fForm.odometer || ''} onChange={(e) => setFForm({ ...fForm, odometer: Number(e.target.value) })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'العدّاد' : 'Odometer'}</label><input type="number" min="0" value={fForm.odometer || ''} onChange={(e) => setFForm({ ...fForm, odometer: Number(e.target.value) })} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'المحطة' : 'Station'}</label><input type="text" value={fForm.station} onChange={(e) => setFForm({ ...fForm, station: e.target.value })} className="input-field" /></div>
           </div>
+          <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'ملاحظات' : 'Notes'}</label><textarea value={fForm.notes} onChange={(e) => setFForm({ ...fForm, notes: e.target.value })} rows={2} className="input-field" placeholder={ar ? 'ملاحظات اختيارية عن التعبئة' : 'Optional refueling notes'} /></div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setFuelModal(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={saveFuel} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
