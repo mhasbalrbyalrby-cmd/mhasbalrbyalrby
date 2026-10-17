@@ -360,6 +360,7 @@ export interface StockMovement {
   tenant_id: string;
   product_id: string;
   warehouse_id: string | null;
+  to_warehouse_id?: string | null;
   movement_type: StockMovementType;
   quantity: number;
   unit_cost: number;
