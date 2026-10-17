@@ -1,12 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
+import type { Product, Warehouse, UnitOfMeasure } from '@/types/database';
+import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
-  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2,
+  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera,
 } from 'lucide-react';
+
+function generateInternalBarcode(usedBarcodes: Set<string>): string {
+  // Prefix 20 is reserved for in-store/internal EAN-13 numbering in many retail systems.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const body = '20' + Math.floor(Math.random() * 10_000_000_000).toString().padStart(10, '0');
+    const sum = body.split('').reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+    const barcode = body + String((10 - (sum % 10)) % 10);
+    if (!usedBarcodes.has(barcode.toLowerCase())) {
+      usedBarcodes.add(barcode.toLowerCase());
+      return barcode;
+    }
+  }
+  throw new Error('Could not generate a unique internal barcode. Please try again.');
+}
 
 export default function InventoryPage() {
   const { t, lang } = useI18n();
@@ -20,6 +35,15 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<CSVRow[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerStarting, setScannerStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
@@ -27,6 +51,81 @@ export default function InventoryPage() {
   });
 
   useEffect(() => { loadData(); }, [profile?.tenant_id]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+    let active = true;
+    let stream: MediaStream | null = null;
+    let frameId = 0;
+    setScannerError('');
+    setScannerStarting(true);
+
+    type DetectedBarcode = { rawValue: string };
+    type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
+    type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+
+    async function startScanner() {
+      try {
+        const DetectorClass = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
+        if (!DetectorClass) {
+          throw new Error(lang === 'ar'
+            ? 'المتصفح لا يدعم قراءة الباركود بالكاميرا. حدّث Chrome أو استخدم إدخال الباركود يدويًا.'
+            : 'This browser does not support camera barcode scanning. Update Chrome or enter the barcode manually.');
+        }
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error(lang === 'ar'
+            ? 'الكاميرا تتطلب اتصال HTTPS وصلاحية الوصول إليها.'
+            : 'Camera access requires HTTPS and permission to use the camera.');
+        }
+
+        const detector = new DetectorClass({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const video = videoRef.current;
+        if (!video) throw new Error(lang === 'ar' ? 'تعذر تشغيل معاينة الكاميرا.' : 'Could not initialize camera preview.');
+        video.srcObject = stream;
+        await video.play();
+        setScannerStarting(false);
+
+        const scanFrame = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              const codes = await detector.detect(video);
+              if (codes.length && codes[0].rawValue.trim()) {
+                const value = codes[0].rawValue.trim();
+                setForm((current) => ({ ...current, barcode: value }));
+                setScannerOpen(false);
+                return;
+              }
+            }
+          } catch {
+            // Continue scanning; transient frame errors should not stop the camera.
+          }
+          if (active) frameId = window.requestAnimationFrame(scanFrame);
+        };
+        frameId = window.requestAnimationFrame(scanFrame);
+      } catch (err) {
+        setScannerStarting(false);
+        setScannerError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تشغيل ماسح الباركود.' : 'Could not start barcode scanner.'));
+      }
+    }
+
+    void startScanner();
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frameId);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scannerOpen, lang]);
+
 
   async function loadData() {
     setLoading(true);
@@ -68,7 +167,7 @@ export default function InventoryPage() {
         name: form.name.trim(),
         name_ar: form.name_ar.trim() || null,
         type: form.type,
-        barcode: form.barcode.trim() || null,
+        barcode: form.barcode.trim() || (form.type === 'product' ? generateInternalBarcode(new Set(products.map((p) => (p.barcode ?? '').trim().toLowerCase()).filter(Boolean))) : null),
         cost_price: Number(form.cost_price) || 0,
         sale_price: Number(form.sale_price) || 0,
         min_stock: Number(form.min_stock) || 0,
@@ -96,6 +195,119 @@ export default function InventoryPage() {
     if (!error) loadData();
   }
 
+
+  const csvHeaders = ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'category'];
+
+  function handleExport() {
+    exportToCSV(
+      'arab-spring-products',
+      csvHeaders,
+      filtered.map((p) => [p.code, p.name, p.name_ar, p.type, p.barcode, p.cost_price, p.sale_price, p.min_stock, p.category])
+    );
+  }
+
+  function downloadImportTemplate() {
+    exportToCSV('products-import-template', csvHeaders, []);
+  }
+
+  async function handleImportFile(event: { target: { files: FileList | null; value: string } }) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportRows([]);
+    setImportErrors([]);
+    try {
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        setImportErrors([lang === 'ar' ? 'يرجى اختيار ملف CSV فقط. ملفات Excel غير مدعومة في هذه النسخة.' : 'Please choose a CSV file. Excel files are not supported in this version.']);
+        return;
+      }
+      const parsed = parseCSV(await file.text(), csvHeaders);
+      if (!parsed.length) {
+        setImportErrors([lang === 'ar' ? 'الملف فارغ أو لا يحتوي على صفوف بيانات صالحة.' : 'The file is empty or contains no valid data rows.']);
+        return;
+      }
+
+      const errors: string[] = [];
+      const missing = csvHeaders.filter((header) => !(header in parsed[0]));
+      if (missing.length) errors.push((lang === 'ar' ? 'أعمدة ناقصة: ' : 'Missing columns: ') + missing.join(', '));
+
+      const seenCodes = new Set<string>();
+      const seenBarcodes = new Set<string>();
+      const existingCodes = new Set(products.map((p) => (p.code ?? '').trim().toLowerCase()).filter(Boolean));
+      const existingBarcodes = new Set(products.map((p) => (p.barcode ?? '').trim().toLowerCase()).filter(Boolean));
+
+      parsed.forEach((row, index) => {
+        const line = index + 2;
+        const name = (row.name ?? '').trim();
+        const code = (row.code ?? '').trim().toLowerCase();
+        const barcode = (row.barcode ?? '').trim().toLowerCase();
+        const type = (row.type ?? '').trim().toLowerCase();
+        if (!name) errors.push((lang === 'ar' ? 'السطر ' : 'Row ') + line + (lang === 'ar' ? ': الاسم مطلوب.' : ': name is required.'));
+        if (type !== 'product' && type !== 'service') errors.push((lang === 'ar' ? 'السطر ' : 'Row ') + line + (lang === 'ar' ? ': النوع يجب أن يكون product أو service.' : ': type must be product or service.'));
+        for (const field of ['cost_price', 'sale_price', 'min_stock']) {
+          const raw = (row[field] ?? '').trim();
+          const value = raw === '' ? 0 : Number(raw);
+          if (!Number.isFinite(value) || value < 0) errors.push((lang === 'ar' ? 'السطر ' : 'Row ') + line + ': ' + field + (lang === 'ar' ? ' يجب أن يكون رقمًا غير سالب.' : ' must be a non-negative number.'));
+        }
+        if (code && (existingCodes.has(code) || seenCodes.has(code))) errors.push((lang === 'ar' ? 'السطر ' : 'Row ') + line + (lang === 'ar' ? ': الكود مكرر.' : ': duplicate code.'));
+        if (barcode && (existingBarcodes.has(barcode) || seenBarcodes.has(barcode))) errors.push((lang === 'ar' ? 'السطر ' : 'Row ') + line + (lang === 'ar' ? ': الباركود مكرر.' : ': duplicate barcode.'));
+        if (code) seenCodes.add(code);
+        if (barcode) seenBarcodes.add(barcode);
+      });
+
+      if (errors.length === 0) {
+        const usedBarcodes = new Set([
+          ...existingBarcodes,
+          ...parsed.map((row) => (row.barcode ?? '').trim().toLowerCase()).filter(Boolean),
+        ]);
+        const rowsWithBarcodes = parsed.map((row) => ({
+          ...row,
+          barcode: (row.barcode ?? '').trim() || ((row.type ?? '').trim().toLowerCase() === 'product'
+            ? generateInternalBarcode(usedBarcodes)
+            : ''),
+        }));
+        setImportRows(rowsWithBarcodes);
+      } else {
+        setImportRows(parsed);
+      }
+      setImportErrors(errors);
+    } catch (err) {
+      setImportErrors([err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر قراءة الملف.' : 'Could not read the file.')]);
+    }
+  }
+
+  async function confirmImport() {
+    if (!profile?.tenant_id || !profile.id || !importRows.length || importErrors.length) return;
+    setImportBusy(true);
+    setImportErrors([]);
+    try {
+      const payload = importRows.map((row) => ({
+        tenant_id: profile.tenant_id,
+        created_by: profile.id,
+        code: row.code?.trim() || null,
+        name: row.name.trim(),
+        name_ar: row.name_ar?.trim() || null,
+        type: row.type.trim().toLowerCase() as 'product' | 'service',
+        barcode: row.barcode?.trim() || null,
+        cost_price: row.cost_price?.trim() ? Number(row.cost_price) : 0,
+        sale_price: row.sale_price?.trim() ? Number(row.sale_price) : 0,
+        min_stock: row.min_stock?.trim() ? Number(row.min_stock) : 0,
+        category: row.category?.trim() || null,
+        is_active: true,
+      }));
+      const { error: insertError } = await supabase.from('products').insert(payload);
+      if (insertError) throw insertError;
+      await loadData();
+      setImportOpen(false);
+      setImportRows([]);
+      setImportFileName('');
+    } catch (err) {
+      setImportErrors([err instanceof Error ? err.message : (lang === 'ar' ? 'فشل استيراد المنتجات.' : 'Product import failed.')]);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   const filtered = products.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.name_ar ?? '').includes(search) || (p.code ?? '').includes(search) || (p.barcode ?? '').includes(search)
   );
@@ -116,6 +328,8 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex gap-3 flex-wrap">
+        <button onClick={() => { setImportRows([]); setImportErrors([]); setImportFileName(''); setImportOpen(true); }} className="btn-secondary flex items-center gap-2"><Upload className="w-4 h-4" />{lang === 'ar' ? 'استيراد CSV' : 'Import CSV'}</button>
+        <button onClick={handleExport} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}</button>
         <div className="relative flex-1 min-w-48">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--color-text-muted)]" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('common.search')} className="input-field ps-10" />
@@ -165,7 +379,7 @@ export default function InventoryPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكود' : 'Code'}</label><input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input-field font-mono" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><input type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><div className="flex gap-2"><input type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field min-w-0 flex-1" /><button type="button" onClick={() => { setScannerError(''); setScannerOpen(true); }} className="btn-secondary shrink-0 flex items-center gap-1.5" title={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'} aria-label={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'}><Camera className="w-4 h-4" /><span className="hidden sm:inline">{lang === 'ar' ? 'مسح بالكاميرا' : 'Scan'}</span></button></div></div>
           </div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.name')} *</label><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" required /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الاسم بالعربية' : 'Arabic Name'}</label><input type="text" value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} className="input-field" dir="rtl" /></div>
@@ -182,6 +396,34 @@ export default function InventoryPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة' : 'Unit'}</label><select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} className="input-field"><option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>{units.map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name}</option>)}</select></div>
           )}
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
+        </div>
+
+      </Modal>
+
+      <Modal open={scannerOpen} onClose={() => setScannerOpen(false)} title={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'}>
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'وجّه الكاميرا الخلفية نحو الباركود وثبّت الصنف داخل الإطار حتى تتم قراءته.' : 'Point the rear camera at the barcode and hold the item steady in view.'}</p>
+          <div className="overflow-hidden rounded-xl bg-black">
+            <video ref={videoRef} autoPlay muted playsInline className="w-full max-h-80 object-contain" />
+          </div>
+          {scannerStarting && <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="w-4 h-4 animate-spin" />{lang === 'ar' ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</div>}
+          {scannerError && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 p-3 text-sm"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{scannerError}</span></div>}
+          <div className="flex justify-end"><button type="button" onClick={() => setScannerOpen(false)} className="btn-secondary">{t('common.cancel')}</button></div>
+        </div>
+      </Modal>
+
+      <Modal open={importOpen} onClose={() => !importBusy && setImportOpen(false)} title={lang === 'ar' ? 'استيراد المنتجات من CSV' : 'Import products from CSV'}>
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'نزّل القالب واملأ صفوف المنتجات ثم اختر ملف CSV. اترك الباركود فارغًا إذا لم يكن للصنف باركود؛ سيُنشئ النظام باركودًا داخليًا تلقائيًا للمنتجات فقط. لن تُحفظ البيانات قبل تأكيد الاستيراد.' : 'Download the template, fill in product rows, then choose a CSV file. Leave barcode blank when a product has no barcode; an internal barcode will be generated automatically for products only. Nothing is saved until you confirm the import.'}</p>
+          <button type="button" onClick={downloadImportTemplate} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{lang === 'ar' ? 'تنزيل القالب' : 'Download template'}</button>
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'ملف CSV' : 'CSV file'}</label>
+            <input type="file" accept=".csv,text/csv" onChange={handleImportFile} disabled={importBusy} className="input-field" />
+            {importFileName && <p className="text-xs mt-1 text-[var(--color-text-muted)]">{importFileName}</p>}
+          </div>
+          {importErrors.length > 0 && <div className="rounded-lg border border-error-300 bg-error-50 dark:bg-error-900/20 p-3 text-sm text-error-600 dark:text-error-400 max-h-40 overflow-auto"><p className="font-semibold mb-1">{lang === 'ar' ? 'يجب تصحيح التالي قبل الحفظ:' : 'Fix the following before saving:'}</p><ul className="list-disc ps-5 space-y-1">{importErrors.map((item, i) => <li key={i}>{item}</li>)}</ul></div>}
+          {importRows.length > 0 && <div className="rounded-lg border border-[var(--color-border)] overflow-auto max-h-52"><p className="text-sm font-medium p-2">{lang === 'ar' ? 'معاينة ' + importRows.length + ' صف' : 'Preview: ' + importRows.length + ' rows'}</p><table className="w-full text-xs"><thead><tr>{['code', 'name', 'type', 'cost_price', 'sale_price'].map((header) => <th key={header} className="text-start p-2 border-b border-[var(--color-border)]">{header}</th>)}</tr></thead><tbody>{importRows.slice(0, 20).map((row, i) => <tr key={i}>{['code', 'name', 'type', 'cost_price', 'sale_price'].map((key) => <td key={key} className="p-2 border-b border-[var(--color-border)]">{row[key] || '—'}</td>)}</tr>)}</tbody></table>{importRows.length > 20 && <p className="text-xs p-2 text-[var(--color-text-muted)]">{lang === 'ar' ? 'تظهر أول 20 صفًا فقط في المعاينة.' : 'Only the first 20 rows are shown in preview.'}</p>}</div>}
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button type="button" onClick={() => setImportOpen(false)} disabled={importBusy} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={confirmImport} disabled={importBusy || !importRows.length || importErrors.length > 0} className="btn-primary flex items-center gap-2">{importBusy && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'تأكيد الاستيراد' : 'Confirm import'}</button></div>
         </div>
       </Modal>
     </div>

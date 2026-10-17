@@ -32,7 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isOwner, setIsOwner] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const loadInProgress = useRef(false);
+  const loadRequestId = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -43,8 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function loadUserData(userId: string) {
-    if (!supabase || loadInProgress.current) return;
-    loadInProgress.current = true;
+    if (!supabase) return;
+    // Each auth transition supersedes earlier requests so stale responses cannot
+    // overwrite the current user's state. Concurrent session checks are allowed.
+    const requestId = ++loadRequestId.current;
 
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -54,11 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      if (!mountedRef.current) return;
-
-      setProfile(profileData as Profile | null);
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
       if (!profileData) {
+        setProfile(null);
         setTenant(null);
         setTenantMember(null);
         setRole(null);
@@ -67,7 +69,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!profileData.tenant_id) {
+      // Resolve the active tenant from the profile first. Some valid users,
+      // including system owners, have profile.tenant_id = NULL but do have
+      // an active tenant_members row. Resolve that relationship without
+      // writing anything to the database.
+      let resolvedTenantId: string | null = profileData.tenant_id ?? null;
+      let memberData: TenantMember | null = null;
+
+      if (resolvedTenantId) {
+        const { data, error: memberError } = await supabase
+          .from('tenant_members')
+          .select('*')
+          .eq('tenant_id', resolvedTenantId)
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (memberError) throw memberError;
+        memberData = data as TenantMember | null;
+      } else {
+        const { data, error: memberError } = await supabase
+          .from('tenant_members')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('is_primary', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (memberError) throw memberError;
+        memberData = data as TenantMember | null;
+        resolvedTenantId = memberData?.tenant_id ?? null;
+      }
+
+      // A sign-in/sign-out or account switch may have happened while membership
+      // was loading. Do not let this request update any auth state if superseded.
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
+
+      if (!resolvedTenantId) {
+        setProfile(profileData as Profile);
         setTenant(null);
         setTenantMember(null);
         setRole(null);
@@ -79,32 +120,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*')
-        .eq('id', profileData.tenant_id)
+        .eq('id', resolvedTenantId)
         .maybeSingle();
 
       if (tenantError) throw tenantError;
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
+      // Publish profile/tenant state only after this request is still current.
+      // This does not update profiles.tenant_id in Supabase.
+      setProfile({ ...(profileData as Profile), tenant_id: resolvedTenantId });
       setTenant(tenantData as Tenant | null);
-
-      const { data: memberData, error: memberError } = await supabase
-        .from('tenant_members')
-        .select('*')
-        .eq('tenant_id', profileData.tenant_id)
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (memberError) throw memberError;
-      if (!mountedRef.current) return;
-
-      setTenantMember(memberData as TenantMember | null);
+      setTenantMember(memberData);
 
       const tenantIsOwner = (tenantData as Tenant | null)?.is_owner ?? false;
-      setIsOwner(tenantIsOwner && !!memberData);
+      // Do not grant owner UI access based on tenant membership alone.
+      // The active member must also have the owner role in the owner tenant.
+      setIsOwner(false);
 
       if (!memberData) {
         setRole(null);
+        setIsOwner(false);
         setAuthError('no_membership');
         return;
       }
@@ -119,17 +154,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle();
 
         if (roleError) throw roleError;
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
         setRole(roleData as Role | null);
+        setIsOwner(tenantIsOwner && (roleData as Role | null)?.name === 'owner');
       } else {
         setRole(null);
+        setIsOwner(false);
       }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
+      // Keep the UI error generic, but preserve diagnostic details for debugging.
+      console.error('[AuthContext] Failed to load authenticated user data:', err);
       setAuthError('load_failed');
     } finally {
-      loadInProgress.current = false;
+      // Only the newest request may end the loading state.
+      if (mountedRef.current && requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -159,11 +201,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setSession(session);
         setUser(session?.user ?? null);
+        activeUserIdRef.current = session?.user?.id ?? null;
 
         if (session?.user) {
-          loadUserData(session.user.id).finally(() => {
-            if (mountedRef.current) setLoading(false);
-          });
+          void loadUserData(session.user.id);
         } else {
           setLoading(false);
         }
@@ -184,21 +225,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (async () => {
           if (!mountedRef.current) return;
 
+          // If an auth event arrives before getSession() resolves, the event is
+          // the newer source of truth; ignore the pending initial session result.
+          resolved = true;
+          clearTimeout(timeoutId);
+
+          const nextUserId = newSession?.user?.id ?? null;
+          const accountChanged = activeUserIdRef.current !== nextUserId;
+          activeUserIdRef.current = nextUserId;
+
           setSession(newSession);
           setUser(newSession?.user ?? null);
 
           if (newSession?.user) {
+            if (accountChanged) {
+              // Never leave the previous account's tenant context visible while
+              // the newly authenticated account is being resolved.
+              loadRequestId.current += 1;
+              setProfile(null);
+              setTenant(null);
+              setTenantMember(null);
+              setRole(null);
+              setIsOwner(false);
+              setAuthError(null);
+            }
+            setLoading(true);
             await loadUserData(newSession.user.id);
           } else {
+            // Invalidate any in-flight profile/tenant requests after sign-out.
+            activeUserIdRef.current = null;
+            loadRequestId.current += 1;
             setProfile(null);
             setTenant(null);
             setTenantMember(null);
             setRole(null);
             setIsOwner(false);
             setAuthError(null);
+            setLoading(false);
           }
-
-          if (mountedRef.current) setLoading(false);
         })();
       }
     );
@@ -221,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const authReady = !authError && !!profile && !!profile.tenant_id && !!tenantMember;
+  const authReady = !authError && !!profile && !!tenant?.id && !!tenantMember;
 
   return (
     <AuthContext.Provider

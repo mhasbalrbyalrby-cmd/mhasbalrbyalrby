@@ -21,7 +21,7 @@ export default function OwnerPanelPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
+  
   useEffect(() => {
     if (!isOwner) return;
     loadData();
@@ -116,7 +116,9 @@ export default function OwnerPanelPage() {
           {tab === 'modules' && <ModulesTab lang={lang} tenants={tenants} userId={profile?.id ?? null} />}
           {tab === 'plans' && <PlansTab plans={plans} lang={lang} />}
           {tab === 'cards' && <CardsTab lang={lang} />}
-          {tab === 'audit' && <AuditTab logs={logs} lang={lang} onRefresh={loadData} />}
+                   {tab === 'audit' && (
+            <AuditTab logs={logs} lang={lang} onRefresh={loadData} />
+          )}
           {tab === 'settings' && <SystemSettingsTab lang={lang} />}
         </>
       )}
@@ -128,8 +130,18 @@ export default function OwnerPanelPage() {
 // Tenants Tab — with activate / suspend / change plan
 // ──────────────────────────────────────────────────────────────
 function TenantsTab({
-  tenants, plans, lang, onRefresh, userId,
-}: { tenants: Tenant[]; plans: SubscriptionPlan[]; lang: string; onRefresh: () => void; userId: string | null }) {
+  tenants,
+  plans,
+  lang,
+  onRefresh,
+  userId,
+}: {
+  tenants: Tenant[];
+  plans: SubscriptionPlan[];
+  lang: string;
+  onRefresh: () => void;
+  userId: string | null;
+}) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -138,50 +150,58 @@ function TenantsTab({
   const [newStatus, setNewStatus] = useState<string>('active');
 
   async function handleStatusChange(tenant: Tenant, status: string) {
-    if (tenant.is_owner) return;
+    if (tenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل حالة مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
     setActionLoading(tenant.id);
     setError('');
-    try {
-      const { error: e } = await supabase.from('tenants').update({ status }).eq('id', tenant.id);
-      if (e) throw e;
-      await supabase.from('audit_logs').insert({
-        action: 'update_tenant_status',
-        entity_type: 'tenant',
-        entity_id: tenant.id,
-        entity_name: tenant.name,
-        old_values: { status: tenant.status },
-        new_values: { status },
-        user_id: userId,
-      });
-      onRefresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
-    } finally {
-      setActionLoading(null);
-    }
-  }
 
-  async function handlePlanChange() {
-    if (!selectedTenant) return;
-    setActionLoading(selectedTenant.id);
-    setError('');
     try {
-      const { error: e } = await supabase.from('tenants').update({
-        plan_id: newPlanId || null,
-        status: newStatus,
-      }).eq('id', selectedTenant.id);
-      if (e) throw e;
-      await supabase.from('audit_logs').insert({
-        action: 'update_tenant_plan',
-        entity_type: 'tenant',
-        entity_id: selectedTenant.id,
-        entity_name: selectedTenant.name,
-        old_values: { plan_id: selectedTenant.plan_id, status: selectedTenant.status },
-        new_values: { plan_id: newPlanId || null, status: newStatus },
-        user_id: userId,
-      });
-      setPlanModalOpen(false);
-      onRefresh();
+      const { data, error: updateError } = await supabase
+        .from('tenants')
+        .update({ status })
+        .eq('id', tenant.id)
+        .eq('is_owner', false)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      if (!data) {
+        throw new Error(
+          lang === 'ar'
+            ? 'لم يتم تحديث المؤسسة. تحقق من الصلاحيات.'
+            : 'Tenant was not updated. Check permissions.'
+        );
+      }
+
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          action: 'update_tenant_status',
+          entity_type: 'tenant',
+          entity_id: tenant.id,
+          entity_name: tenant.name,
+          old_values: { status: tenant.status },
+          new_values: { status },
+          user_id: userId,
+        });
+
+      await onRefresh();
+
+      if (auditError) {
+        setError(
+          lang === 'ar'
+            ? 'تم تحديث الحالة، لكن تعذر تسجيل العملية في سجل التدقيق.'
+            : 'Status updated, but the audit log could not be saved.'
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
     } finally {
@@ -190,11 +210,92 @@ function TenantsTab({
   }
 
   function openPlanModal(tenant: Tenant) {
+    if (tenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
     setSelectedTenant(tenant);
     setNewPlanId(tenant.plan_id ?? '');
     setNewStatus(tenant.status);
     setError('');
     setPlanModalOpen(true);
+  }
+
+  async function handlePlanChange() {
+    if (!selectedTenant) return;
+
+    if (selectedTenant.is_owner) {
+      setError(
+        lang === 'ar'
+          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
+          : 'The system owner tenant cannot be modified.'
+      );
+      return;
+    }
+
+    setActionLoading(selectedTenant.id);
+    setError('');
+
+    try {
+      const { data, error: updateError } = await supabase
+        .from('tenants')
+        .update({
+          plan_id: newPlanId || null,
+          status: newStatus,
+        })
+        .eq('id', selectedTenant.id)
+        .eq('is_owner', false)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+
+      if (!data) {
+        throw new Error(
+          lang === 'ar'
+            ? 'لم يتم حفظ التغييرات. تحقق من الصلاحيات.'
+            : 'Changes were not saved. Check permissions.'
+        );
+      }
+
+      const { error: auditError } = await supabase
+        .from('audit_logs')
+        .insert({
+          action: 'update_tenant_plan',
+          entity_type: 'tenant',
+          entity_id: selectedTenant.id,
+          entity_name: selectedTenant.name,
+          old_values: {
+            plan_id: selectedTenant.plan_id,
+            status: selectedTenant.status,
+          },
+          new_values: {
+            plan_id: newPlanId || null,
+            status: newStatus,
+          },
+          user_id: userId,
+        });
+
+      setPlanModalOpen(false);
+      await onRefresh();
+
+      if (auditError) {
+        setError(
+          lang === 'ar'
+            ? 'تم الحفظ، لكن تعذر تسجيل العملية في سجل التدقيق.'
+            : 'Changes saved, but the audit log could not be saved.'
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   const statusColors: Record<string, string> = {
