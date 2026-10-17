@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus, Product, Warehouse, Shift } from '@/types/database';
+import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus, Product, ProductUnit, UnitOfMeasure, Warehouse, Shift } from '@/types/database';
 import { exportToCSV } from '@/lib/csv';
 import { formatDualDate } from '@/lib/hijri';
 import Modal from '@/components/Modal';
@@ -17,6 +17,9 @@ interface FormLine {
   quantity: number;
   unit_price: number;
   discount_amount: number;
+  unit_id: string;
+  unit_name_snapshot: string;
+  conversion_factor: number;
 }
 
 export default function InvoicesPage() {
@@ -25,6 +28,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productUnits, setProductUnits] = useState<ProductUnit[]>([]);
+  const [baseUnits, setBaseUnits] = useState<UnitOfMeasure[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +57,7 @@ export default function InvoicesPage() {
     warehouse_id: '',
     shift_id: '',
     discount_amount: 0,
-    lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] as FormLine[],
+    lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }] as FormLine[],
   });
 
   useEffect(() => { void loadData(); }, [profile?.tenant_id]);
@@ -87,10 +92,12 @@ export default function InvoicesPage() {
               const codes = await detector.detect(video);
               const code = codes.find((item) => item.rawValue.trim())?.rawValue.trim();
               if (code) {
-                const product = products.find((item) => (item.barcode ?? '').trim() === code);
+                const matchedUnit = productUnits.find((unit) => (unit.barcode ?? '').trim() === code);
+                const product = matchedUnit ? products.find((item) => item.id === matchedUnit.product_id) : products.find((item) => (item.barcode ?? '').trim() === code);
                 if (!product) setError((lang === 'ar' ? 'لم يتم العثور على صنف يحمل الباركود: ' : 'No product found for barcode: ') + code);
                 else setForm((current) => {
-                  const existing = current.lines.findIndex((line) => line.product_id === product.id);
+                  const selectedUnitId = matchedUnit?.id ?? '';
+                  const existing = current.lines.findIndex((line) => line.product_id === product.id && line.unit_id === selectedUnitId);
                   if (existing >= 0) {
                     const lines = [...current.lines];
                     lines[existing] = { ...lines[existing], quantity: (Number(lines[existing].quantity) || 0) + 1 };
@@ -101,8 +108,11 @@ export default function InvoicesPage() {
                     product_id: product.id,
                     description: lang === 'ar' ? product.name_ar ?? product.name : product.name,
                     quantity: 1,
-                    unit_price: current.type === 'sale' || current.type === 'return_sale' ? product.sale_price : product.cost_price,
+                    unit_price: matchedUnit ? ((current.type === 'sale' || current.type === 'return_sale') ? Number(matchedUnit.sale_price) : Number(matchedUnit.cost_price)) : (current.type === 'sale' || current.type === 'return_sale' ? product.sale_price : product.cost_price),
                     discount_amount: 0,
+                    unit_id: matchedUnit?.id ?? '',
+                    unit_name_snapshot: matchedUnit ? (lang === 'ar' ? matchedUnit.name_ar ?? matchedUnit.name : matchedUnit.name) : (() => { const baseUnit = baseUnits.find((unit) => unit.id === product.unit_id); return baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit'); })(),
+                    conversion_factor: Number(matchedUnit?.factor ?? 1),
                   };
                   if (blankIndex >= 0) { const lines = [...current.lines]; lines[blankIndex] = newLine; return { ...current, lines }; }
                   return { ...current, lines: [...current.lines, newLine] };
@@ -127,7 +137,7 @@ export default function InvoicesPage() {
       if (stream) stream.getTracks().forEach((track) => track.stop());
       if (videoRef.current) videoRef.current.srcObject = null;
     };
-  }, [scannerOpen, lang, products]);
+  }, [scannerOpen, lang, products, productUnits, baseUnits]);
 
 
   async function loadData() {
@@ -138,6 +148,8 @@ export default function InvoicesPage() {
       setInvoices([]);
       setParties([]);
       setProducts([]);
+      setProductUnits([]);
+      setBaseUnits([]);
       setWarehouses([]);
       setShifts([]);
       setLoading(false);
@@ -150,15 +162,19 @@ export default function InvoicesPage() {
         supabase.from('invoices').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
         supabase.from('parties').select('*').eq('tenant_id', tenantId),
         supabase.from('products').select('*').eq('tenant_id', tenantId).eq('is_active', true),
+        supabase.from('product_units').select('*').eq('tenant_id', tenantId),
+        supabase.from('units_of_measure').select('*').eq('tenant_id', tenantId),
         supabase.from('warehouses').select('*').eq('tenant_id', tenantId).eq('is_active', true),
         supabase.from('shifts').select('*').eq('tenant_id', tenantId).eq('status', 'open').order('start_time', { ascending: false }),
       ]);
       const failed = results.find((result) => result.error);
       if (failed?.error) throw failed.error;
-      const [invResult, partyResult, prodResult, whResult, shiftResult] = results;
+      const [invResult, partyResult, prodResult, unitsResult, baseUnitsResult, whResult, shiftResult] = results;
       setInvoices((invResult.data as Invoice[]) ?? []);
       setParties((partyResult.data as Party[]) ?? []);
       setProducts((prodResult.data as Product[]) ?? []);
+      setProductUnits((unitsResult.data as ProductUnit[]) ?? []);
+      setBaseUnits((baseUnitsResult.data as UnitOfMeasure[]) ?? []);
       setWarehouses((whResult.data as Warehouse[]) ?? []);
       setShifts((shiftResult.data as Shift[]) ?? []);
     } catch (err) {
@@ -181,14 +197,14 @@ export default function InvoicesPage() {
       warehouse_id: '',
       shift_id: '',
       discount_amount: 0,
-      lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }],
+      lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }],
     });
     setError('');
     setModalOpen(true);
   }
 
   function addLine() {
-    setForm({ ...form, lines: [...form.lines, { product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] });
+    setForm({ ...form, lines: [...form.lines, { product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }] });
   }
 
   function updateLine(idx: number, field: keyof FormLine, value: string | number) {
@@ -199,8 +215,28 @@ export default function InvoicesPage() {
       if (prod) {
         newLines[idx].description = lang === 'ar' ? prod.name_ar ?? prod.name : prod.name;
         newLines[idx].unit_price = form.type === 'sale' || form.type === 'return_sale' ? prod.sale_price : prod.cost_price;
+        newLines[idx].unit_id = '';
+        newLines[idx].conversion_factor = 1;
+        const baseUnit = baseUnits.find((unit) => unit.id === prod.unit_id);
+        newLines[idx].unit_name_snapshot = baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit');
       }
     }
+    setForm({ ...form, lines: newLines });
+  }
+
+  function updateLineUnit(idx: number, unitId: string) {
+    const line = form.lines[idx];
+    const selectedUnit = productUnits.find((unit) => unit.id === unitId);
+    const product = products.find((item) => item.id === line.product_id);
+    const baseUnit = product ? baseUnits.find((unit) => unit.id === product.unit_id) : undefined;
+    const newLines = [...form.lines];
+    newLines[idx] = {
+      ...line,
+      unit_id: selectedUnit?.id ?? '',
+      conversion_factor: Number(selectedUnit?.factor ?? 1),
+      unit_name_snapshot: selectedUnit ? (lang === 'ar' ? selectedUnit.name_ar ?? selectedUnit.name : selectedUnit.name) : baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit'),
+      unit_price: selectedUnit ? ((form.type === 'sale' || form.type === 'return_sale') ? Number(selectedUnit.sale_price) : Number(selectedUnit.cost_price)) : product ? ((form.type === 'sale' || form.type === 'return_sale') ? product.sale_price : product.cost_price) : line.unit_price,
+    };
     setForm({ ...form, lines: newLines });
   }
 
@@ -263,6 +299,10 @@ export default function InvoicesPage() {
         invoice_id: invId,
         tenant_id: profile.tenant_id,
         product_id: l.product_id || null,
+        unit_id: l.unit_id || null,
+        unit_name_snapshot: l.unit_name_snapshot || null,
+        conversion_factor: Number(l.conversion_factor) > 0 ? Number(l.conversion_factor) : 1,
+        base_quantity: (Number(l.quantity) || 1) * (Number(l.conversion_factor) > 0 ? Number(l.conversion_factor) : 1),
         description: l.description || null,
         quantity: Number(l.quantity) || 1,
         unit_price: Number(l.unit_price) || 0,
@@ -490,6 +530,10 @@ export default function InvoicesPage() {
                   {products.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}{p.type === 'service' ? (lang === 'ar' ? ' (خدمة)' : ' (service)') : ''}</option>)}
                 </select>
                 <input type="text" placeholder={lang === 'ar' ? 'الوصف' : 'Description'} value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} className="input-field col-span-3" />
+                <select value={line.unit_id} onChange={(e) => updateLineUnit(idx, e.target.value)} className="input-field col-span-2 !text-xs" aria-label={lang === 'ar' ? 'وحدة الفاتورة' : 'Invoice unit'}>
+                  <option value="">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</option>
+                  {productUnits.filter((unit) => unit.product_id === line.product_id && ((form.type === 'sale' || form.type === 'return_sale') ? unit.is_sale_unit : unit.is_purchase_unit)).map((unit) => <option key={unit.id} value={unit.id}>{lang === 'ar' ? unit.name_ar ?? unit.name : unit.name}</option>)}
+                </select>
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'كمية' : 'Qty'} value={line.quantity || ''} onChange={(e) => updateLine(idx, 'quantity', e.target.value)} className="input-field col-span-1" />
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'سعر' : 'Price'} value={line.unit_price || ''} onChange={(e) => updateLine(idx, 'unit_price', e.target.value)} className="input-field col-span-2" />
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'خصم' : 'Disc'} value={line.discount_amount || ''} onChange={(e) => updateLine(idx, 'discount_amount', e.target.value)} className="input-field col-span-1" />
