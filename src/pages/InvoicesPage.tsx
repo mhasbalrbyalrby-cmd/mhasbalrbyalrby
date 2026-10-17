@@ -8,7 +8,7 @@ import { formatDualDate } from '@/lib/hijri';
 import Modal from '@/components/Modal';
 import {
   FileText, Plus, Search, Pencil, Trash2, Loader2, AlertCircle,
-  CheckCircle2, XCircle, Eye, Download,
+  CheckCircle2, XCircle, Eye, Download, Camera,
 } from 'lucide-react';
 
 interface FormLine {
@@ -36,6 +36,10 @@ export default function InvoicesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerStarting, setScannerStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [form, setForm] = useState({
     type: 'sale' as InvoiceType,
@@ -50,7 +54,80 @@ export default function InvoicesPage() {
     lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] as FormLine[],
   });
 
-  useEffect(() => { void loadData(); }, [profile?.tenant_id]);
+useEffect(() => { void loadData(); }, [profile?.tenant_id]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+    let active = true;
+    let stream: MediaStream | null = null;
+    let frameId = 0;
+    setScannerError('');
+    setScannerStarting(true);
+    type DetectedBarcode = { rawValue: string };
+    type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
+    type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+    async function startScanner() {
+      try {
+        const DetectorClass = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
+        if (!DetectorClass) throw new Error(lang === 'ar' ? 'المتصفح لا يدعم قراءة الباركود بالكاميرا. يمكنك إدخال الباركود يدويًا.' : 'This browser does not support camera barcode scanning. You can enter the barcode manually.');
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error(lang === 'ar' ? 'الكاميرا تتطلب اتصال HTTPS وصلاحية الوصول إليها.' : 'Camera access requires HTTPS and camera permission.');
+        const detector = new DetectorClass({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        if (!active) { stream.getTracks().forEach((track) => track.stop()); return; }
+        const video = videoRef.current;
+        if (!video) throw new Error(lang === 'ar' ? 'تعذر تشغيل معاينة الكاميرا.' : 'Could not initialize camera preview.');
+        video.srcObject = stream;
+        await video.play();
+        setScannerStarting(false);
+        const scanFrame = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              const codes = await detector.detect(video);
+              const code = codes.find((item) => item.rawValue.trim())?.rawValue.trim();
+              if (code) {
+                const product = products.find((item) => (item.barcode ?? '').trim() === code);
+                if (!product) setError((lang === 'ar' ? 'لم يتم العثور على صنف يحمل الباركود: ' : 'No product found for barcode: ') + code);
+                else setForm((current) => {
+                  const existing = current.lines.findIndex((line) => line.product_id === product.id);
+                  if (existing >= 0) {
+                    const lines = [...current.lines];
+                    lines[existing] = { ...lines[existing], quantity: (Number(lines[existing].quantity) || 0) + 1 };
+                    return { ...current, lines };
+                  }
+                  const blankIndex = current.lines.findIndex((line) => !line.product_id && !line.description.trim());
+                  const newLine: FormLine = {
+                    product_id: product.id,
+                    description: lang === 'ar' ? product.name_ar ?? product.name : product.name,
+                    quantity: 1,
+                    unit_price: current.type === 'sale' || current.type === 'return_sale' ? product.sale_price : product.cost_price,
+                    discount_amount: 0,
+                  };
+                  if (blankIndex >= 0) { const lines = [...current.lines]; lines[blankIndex] = newLine; return { ...current, lines }; }
+                  return { ...current, lines: [...current.lines, newLine] };
+                });
+                setScannerOpen(false);
+                return;
+              }
+            }
+          } catch { /* Continue scanning after transient frame errors. */ }
+          if (active) frameId = window.requestAnimationFrame(scanFrame);
+        };
+        frameId = window.requestAnimationFrame(scanFrame);
+      } catch (err) {
+        setScannerStarting(false);
+        setScannerError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تشغيل ماسح الباركود.' : 'Could not start barcode scanner.'));
+      }
+    }
+    void startScanner();
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frameId);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scannerOpen, lang, products]);
+
 
   async function loadData() {
     setLoading(true);
@@ -396,7 +473,10 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--color-text-muted)]">{lang === 'ar' ? 'سطور الفاتورة' : 'Invoice Lines'}</span>
-              <button onClick={addLine} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'سطر' : 'Line'}</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setError(''); setScannerError(''); setScannerOpen(true); }} className="btn-secondary text-sm flex items-center gap-1"><Camera className="w-3.5 h-3.5" />{lang === 'ar' ? 'مسح باركود' : 'Scan barcode'}</button>
+                <button onClick={addLine} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'سطر' : 'Line'}</button>
+              </div>
             </div>
             {form.lines.map((line, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center mb-2">
@@ -446,6 +526,16 @@ export default function InvoicesPage() {
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal open={scannerOpen} onClose={() => setScannerOpen(false)} title={lang === 'ar' ? 'مسح باركود الصنف' : 'Scan product barcode'} size="lg">
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'وجّه الكاميرا إلى باركود الصنف. سيُضاف الصنف إلى الفاتورة ويزداد العدد بمقدار واحد إذا كان موجودًا.' : 'Point the camera at a product barcode. The item will be added to the invoice, or its quantity increased by one if already present.'}</p>
+          {scannerError && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-600 dark:text-error-400">{scannerError}</div>}
+          <video ref={videoRef} muted playsInline className="w-full max-h-72 rounded-lg bg-black object-contain" />
+          {scannerStarting && <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="w-4 h-4 animate-spin" />{lang === 'ar' ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</div>}
+          <div className="flex justify-end"><button onClick={() => setScannerOpen(false)} className="btn-secondary">{lang === 'ar' ? 'إغلاق' : 'Close'}</button></div>
         </div>
       </Modal>
 
