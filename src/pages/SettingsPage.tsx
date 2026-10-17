@@ -277,7 +277,8 @@ function WarehousesTab() {
 
 function CurrenciesTab() {
   const { t, lang } = useI18n();
-  const { profile } = useAuth();
+  const { profile, isOwner, role } = useAuth();
+  const canManageCurrencies = isOwner || ['owner', 'admin'].includes((role?.name ?? '').toLowerCase());
   type CurrencyRow = {
     id: string; tenant_id: string | null; code: string; name: string; name_ar: string | null;
     symbol: string | null; decimals: number; is_base: boolean; is_active: boolean;
@@ -443,7 +444,7 @@ function CurrenciesTab() {
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'إدارة عملات المؤسسة. العملات العامة للعرض فقط.' : 'Manage tenant currencies. Global currencies are read-only here.'}</p>
-        <button type="button" onClick={openNew} className="btn-primary flex items-center gap-2 shrink-0"><Plus className="w-4 h-4" />{lang === 'ar' ? 'إضافة عملة' : 'Add currency'}</button>
+        {canManageCurrencies && <button type="button" onClick={openNew} className="btn-primary flex items-center gap-2 shrink-0"><Plus className="w-4 h-4" />{lang === 'ar' ? 'إضافة عملة' : 'Add currency'}</button>}
       </div>
       {error && <div role="alert" className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm p-3"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{error}</span></div>}
       {notice && <div role="status" className="flex items-start gap-2 rounded-lg bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-400 text-sm p-3"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /><span>{notice}</span></div>}
@@ -473,7 +474,7 @@ function CurrenciesTab() {
               <div className="flex flex-wrap items-center gap-1">
                 {currency.is_base && <span className="text-xs px-2 py-1 rounded-full bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">{lang === 'ar' ? 'افتراضية' : 'Default'}</span>}
                 <span className={`text-xs px-2 py-1 rounded-full ${currency.is_active ? 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400' : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400'}`}>{currency.is_active ? (lang === 'ar' ? 'نشطة' : 'Active') : (lang === 'ar' ? 'متوقفة' : 'Inactive')}</span>
-                {isTenantCurrency && <><button type="button" onClick={() => openEdit(currency)} className="btn-secondary !p-2" title={lang === 'ar' ? 'تعديل' : 'Edit'} aria-label={lang === 'ar' ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button><button type="button" onClick={() => void setDefaultCurrency(currency)} disabled={currency.is_base || !currency.is_active} className="btn-secondary !p-2 disabled:opacity-40" title={lang === 'ar' ? 'تعيين كافتراضية' : 'Set as default'} aria-label={lang === 'ar' ? 'تعيين كافتراضية' : 'Set as default'}><Star className="w-4 h-4" /></button><button type="button" onClick={() => void deleteCurrency(currency)} disabled={currency.is_base || deletingId === currency.id} className="btn-secondary !p-2 text-error-600 disabled:opacity-40" title={lang === 'ar' ? 'حذف' : 'Delete'} aria-label={lang === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button></>}
+                {isTenantCurrency && canManageCurrencies && <><button type="button" onClick={() => openEdit(currency)} className="btn-secondary !p-2" title={lang === 'ar' ? 'تعديل' : 'Edit'} aria-label={lang === 'ar' ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button><button type="button" onClick={() => void setDefaultCurrency(currency)} disabled={currency.is_base || !currency.is_active} className="btn-secondary !p-2 disabled:opacity-40" title={lang === 'ar' ? 'تعيين كافتراضية' : 'Set as default'} aria-label={lang === 'ar' ? 'تعيين كافتراضية' : 'Set as default'}><Star className="w-4 h-4" /></button><button type="button" onClick={() => void deleteCurrency(currency)} disabled={currency.is_base || deletingId === currency.id} className="btn-secondary !p-2 text-error-600 disabled:opacity-40" title={lang === 'ar' ? 'حذف' : 'Delete'} aria-label={lang === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button></>}
               </div>
             </div>;
           })}
