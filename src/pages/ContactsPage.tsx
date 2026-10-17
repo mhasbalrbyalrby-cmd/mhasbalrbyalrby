@@ -36,8 +36,9 @@ export default function ContactsPage() {
   });
 
   useEffect(() => {
-    loadParties();
-  }, []);
+    void loadParties();
+    // The page may mount before authentication finishes loading the profile.
+  }, [profile?.tenant_id]);
 
   async function loadParties() {
     setLoading(true);
