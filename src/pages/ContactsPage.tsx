@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import type { Party, PartyRole, PartyRoleType } from './database';
+import type { Party, PartyRole, PartyRoleType } from '../types/database';
 import Modal from '../components/Modal';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2,
