@@ -117,7 +117,12 @@ export default function InventoryPage() {
         });
         const cameraTrack = stream.getVideoTracks()[0] ?? null;
         cameraTrackRef.current = cameraTrack;
-        const cameraCapabilities = cameraTrack?.getCapabilities() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+        let cameraCapabilities: (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+        try {
+          cameraCapabilities = cameraTrack?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+        } catch {
+          cameraCapabilities = undefined;
+        }
         setTorchSupported(Boolean(cameraCapabilities?.torch));
         if (!active) {
           stream.getTracks().forEach((track) => track.stop());
