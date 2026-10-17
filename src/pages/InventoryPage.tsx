@@ -60,6 +60,22 @@ export default function InventoryPage() {
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
     barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '',
   });
+  const productDraftKey = profile?.tenant_id && profile?.id
+    ? `arab-spring:product-draft:${profile.tenant_id}:${profile.id}`
+    : null;
+
+  useEffect(() => {
+    if (!modalOpen || editing || !productDraftKey) return;
+    try {
+      localStorage.setItem(productDraftKey, JSON.stringify({
+        form,
+        formUnits,
+        savedAt: new Date().toISOString(),
+      }));
+    } catch (draftError) {
+      console.warn('[InventoryPage] Could not autosave product draft locally:', draftError);
+    }
+  }, [modalOpen, editing, productDraftKey, form, formUnits]);
 
   useEffect(() => { loadData(); }, [profile?.tenant_id]);
 
@@ -182,6 +198,20 @@ export default function InventoryPage() {
     setEditing(null);
     setFormUnits([]);
     setForm({ code: '', name: '', name_ar: '', type: 'product', barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '' });
+    if (productDraftKey) {
+      try {
+        const rawDraft = localStorage.getItem(productDraftKey);
+        if (rawDraft) {
+          const draft = JSON.parse(rawDraft) as { form?: typeof form; formUnits?: typeof formUnits };
+          if (draft.form && typeof draft.form.name === 'string' && Array.isArray(draft.formUnits)) {
+            setForm(draft.form);
+            setFormUnits(draft.formUnits);
+          }
+        }
+      } catch (draftError) {
+        console.warn('[InventoryPage] Could not restore product draft:', draftError);
+      }
+    }
     setError('');
     setModalOpen(true);
   }
@@ -249,6 +279,11 @@ export default function InventoryPage() {
         throw new Error(lang === 'ar'
           ? 'لم يُرجع الحفظ معرّف الصنف؛ لم يتم تأكيد نجاح العملية.'
           : 'Save did not return a product ID; success could not be confirmed.');
+      }
+      if (!editing && productDraftKey) {
+        try { localStorage.removeItem(productDraftKey); } catch (draftError) {
+          console.warn('[InventoryPage] Could not clear saved product draft:', draftError);
+        }
       }
       setModalOpen(false);
       await loadData();
