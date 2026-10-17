@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse, UnitOfMeasure, ProductUnit } from '@/types/database';
+import type { Product, Warehouse, UnitOfMeasure, ProductUnit, StockMovement } from '@/types/database';
 import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
@@ -30,6 +30,14 @@ export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
   const [productUnits, setProductUnits] = useState<ProductUnit[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [stocktakeOpen, setStocktakeOpen] = useState(false);
+  const [stocktakeProductId, setStocktakeProductId] = useState('');
+  const [stocktakeWarehouseId, setStocktakeWarehouseId] = useState('');
+  const [stocktakeUnitId, setStocktakeUnitId] = useState('base');
+  const [stocktakeQuantity, setStocktakeQuantity] = useState('0');
+  const [stocktakeSaving, setStocktakeSaving] = useState(false);
+  const [stocktakeError, setStocktakeError] = useState('');
   const [formUnits, setFormUnits] = useState<Array<{ id?: string; name: string; name_ar: string; factor: number; barcode: string; cost_price: number; sale_price: number; is_purchase_unit: boolean; is_sale_unit: boolean; allow_fraction: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -133,7 +141,7 @@ export default function InventoryPage() {
     setLoading(true);
     const tid = profile?.tenant_id;
     if (!tid) { setLoading(false); return; }
-    const [{ data: p }, { data: w }, { data: u }, { data: pu, error: puError }] = await Promise.all([
+    const [{ data: p }, { data: w }, { data: u }, { data: pu, error: puError }, { data: sm, error: smError }] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('warehouses').select('*').eq('tenant_id', tid),
       supabase.from('units_of_measure').select('*').eq('tenant_id', tid),
@@ -224,6 +232,75 @@ export default function InventoryPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally { setSaving(false); }
+  }
+
+  function stockBalance(productId: string, warehouseId: string): number {
+    return stockMovements.reduce((balance, movement) => {
+      if (movement.product_id !== productId) return balance;
+      const quantity = Number(movement.quantity) || 0;
+      if (movement.movement_type === 'in' || movement.movement_type === 'return_in') {
+        return balance + (movement.warehouse_id === warehouseId ? quantity : 0);
+      }
+      if (movement.movement_type === 'out' || movement.movement_type === 'return_out') {
+        return balance - (movement.warehouse_id === warehouseId ? quantity : 0);
+      }
+      if (movement.movement_type === 'adjustment') {
+        return balance + (movement.warehouse_id === warehouseId ? quantity : 0);
+      }
+      if (movement.movement_type === 'transfer') {
+        const afterSource = movement.warehouse_id === warehouseId ? balance - quantity : balance;
+        return movement.to_warehouse_id === warehouseId ? afterSource + quantity : afterSource;
+      }
+      return balance;
+    }, 0);
+  }
+
+  const stocktakeProduct = products.find((product) => product.id === stocktakeProductId);
+  const stocktakeUnit = productUnits.find((unit) => unit.id === stocktakeUnitId && unit.product_id === stocktakeProductId);
+  const stocktakeFactor = stocktakeUnit ? Number(stocktakeUnit.factor) : 1;
+  const stocktakeCountedBase = Math.max(0, Number(stocktakeQuantity) || 0) * stocktakeFactor;
+  const stocktakeCurrentBase = stocktakeProduct && stocktakeWarehouseId
+    ? stockBalance(stocktakeProduct.id, stocktakeWarehouseId)
+    : 0;
+  const stocktakeDelta = stocktakeCountedBase - stocktakeCurrentBase;
+
+  async function saveStocktake() {
+    if (!profile?.tenant_id || !profile.id || !stocktakeProduct || !stocktakeWarehouseId) {
+      setStocktakeError(lang === 'ar' ? 'اختر الصنف والمخزن أولًا.' : 'Choose a product and warehouse first.');
+      return;
+    }
+    const count = Number(stocktakeQuantity);
+    if (!Number.isFinite(count) || count < 0) {
+      setStocktakeError(lang === 'ar' ? 'كمية الجرد يجب أن تكون رقمًا غير سالب.' : 'Counted quantity must be a non-negative number.');
+      return;
+    }
+    if (stocktakeDelta === 0) {
+      setStocktakeError(lang === 'ar' ? 'الرصيد الفعلي يطابق رصيد النظام؛ لا توجد تسوية لتسجيلها.' : 'Count matches the system balance; no adjustment is needed.');
+      return;
+    }
+    setStocktakeSaving(true);
+    setStocktakeError('');
+    try {
+      const { error: insertError } = await supabase.from('stock_movements').insert({
+        tenant_id: profile.tenant_id,
+        product_id: stocktakeProduct.id,
+        warehouse_id: stocktakeWarehouseId,
+        movement_type: 'adjustment',
+        quantity: stocktakeDelta,
+        unit_cost: Number(stocktakeProduct.cost_price) || 0,
+        reference_type: 'stocktake',
+        created_by: profile.id,
+      });
+      if (insertError) throw insertError;
+      await loadData();
+      setStocktakeOpen(false);
+      setStocktakeQuantity('0');
+      setStocktakeUnitId('base');
+    } catch (err) {
+      setStocktakeError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر حفظ تسوية الجرد.' : 'Could not save stock adjustment.'));
+    } finally {
+      setStocktakeSaving(false);
+    }
   }
 
   async function handleDelete(p: Product) {
@@ -361,7 +438,10 @@ export default function InventoryPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'المنتجات والمخازن والمخزون' : 'Products, warehouses, and stock'}</p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => { setStocktakeError(''); setStocktakeProductId(products.find((p) => p.type === 'product')?.id ?? ''); setStocktakeWarehouseId(warehouses[0]?.id ?? ''); setStocktakeUnitId('base'); setStocktakeQuantity('0'); setStocktakeOpen(true); }} className="btn-secondary">{lang === 'ar' ? 'جرد متعدد الوحدات' : 'Multi-unit stocktake'}</button>
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
@@ -410,6 +490,25 @@ export default function InventoryPage() {
           </table>
         </div>
       )}
+
+      <Modal open={stocktakeOpen} onClose={() => !stocktakeSaving && setStocktakeOpen(false)} title={lang === 'ar' ? 'جرد المخزون بوحدات متعددة' : 'Multi-unit stocktake'}>
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'أدخل الكمية الفعلية بالوحدة التي عُدّت. سيحوّلها النظام إلى الوحدة الأساسية ويسجل فرق الجرد كحركة تسوية.' : 'Enter the physically counted quantity in the selected unit. The count is converted to the base unit and the difference is recorded as an adjustment.'}</p>
+          {stocktakeError && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm p-3"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{stocktakeError}</span></div>}
+          <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الصنف' : 'Product'}</label><select value={stocktakeProductId} onChange={(e) => { setStocktakeProductId(e.target.value); setStocktakeUnitId('base'); }} className="input-field"><option value="">{lang === 'ar' ? 'اختر صنفًا' : 'Select product'}</option>{products.filter((p) => p.type === 'product').map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}</select></div>
+          <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'المخزن' : 'Warehouse'}</label><select value={stocktakeWarehouseId} onChange={(e) => setStocktakeWarehouseId(e.target.value)} className="input-field"><option value="">{lang === 'ar' ? 'اختر مخزنًا' : 'Select warehouse'}</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{lang === 'ar' ? w.name_ar ?? w.name : w.name}</option>)}</select></div>
+          <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'وحدة العد' : 'Count unit'}</label><select value={stocktakeUnitId} onChange={(e) => setStocktakeUnitId(e.target.value)} className="input-field" disabled={!stocktakeProductId}><option value="base">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</option>{productUnits.filter((u) => u.product_id === stocktakeProductId).map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name} (×{u.factor})</option>)}</select></div>
+          <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكمية الفعلية المعدودة' : 'Physically counted quantity'}</label><input type="number" min="0" step="0.000001" value={stocktakeQuantity} onChange={(e) => setStocktakeQuantity(e.target.value)} className="input-field" /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg bg-[var(--color-bg)] p-3"><div className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'رصيد النظام (أساسي)' : 'System balance (base)'}</div><div className="text-lg font-semibold">{stocktakeCurrentBase.toLocaleString(undefined,{maximumFractionDigits:6})}</div></div>
+            <div className="rounded-lg bg-[var(--color-bg)] p-3"><div className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'الكمية المعدودة (أساسي)' : 'Counted quantity (base)'}</div><div className="text-lg font-semibold">{stocktakeCountedBase.toLocaleString(undefined,{maximumFractionDigits:6})}</div></div>
+            <div className="rounded-lg bg-[var(--color-bg)] p-3"><div className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'فرق الجرد' : 'Stock difference'}</div><div className="text-lg font-semibold">{stocktakeDelta.toLocaleString(undefined,{maximumFractionDigits:6})}</div></div>
+          </div>
+          {stocktakeProduct && <p className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'معامل التحويل الحالي: ' : 'Conversion factor: '}{stocktakeFactor}. {lang === 'ar' ? 'النتيجة معروضة بالوحدة الأساسية للصنف.' : 'Results are shown in the product base unit.'}</p>}
+          {warehouses.length === 0 && <p className="text-sm text-error-500">{lang === 'ar' ? 'أضف مخزنًا قبل تسجيل الجرد.' : 'Add a warehouse before recording stocktake.'}</p>}
+          <div className="flex gap-2 justify-end border-t border-[var(--color-border)] pt-3"><button type="button" onClick={() => setStocktakeOpen(false)} disabled={stocktakeSaving} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={saveStocktake} disabled={stocktakeSaving || warehouses.length === 0 || !stocktakeProductId || !stocktakeWarehouseId} className="btn-primary flex items-center gap-2">{stocktakeSaving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'حفظ تسوية الجرد' : 'Save stock adjustment'}</button></div>
+        </div>
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('common.edit') : lang === 'ar' ? 'صنف جديد' : 'New Item'}>
         {error && <div className="flex items-center gap-2 bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm rounded-lg px-3 py-2 mb-4"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
