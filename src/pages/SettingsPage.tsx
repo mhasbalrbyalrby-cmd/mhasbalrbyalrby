@@ -47,13 +47,34 @@ export default function SettingsPage() {
     }
     setSaving(true); setError(''); setSuccess('');
     try {
-      const { data, error: e } = await supabase.from('tenants').update({
-        name: companyForm.name.trim(),
-        name_ar: companyForm.name_ar.trim() || null,
-        settings: { ...(tenant.settings ?? {}), phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
-      }).eq('id', tenant.id).select('id').maybeSingle();
-      if (e) throw e;
-      if (!data) throw new Error(lang === 'ar' ? 'لم يتم تحديث بيانات المؤسسة. قد لا تسمح الصلاحيات أو سياسة RLS بالتعديل.' : 'Tenant settings were not updated. Permissions or RLS may be preventing the change.');
+      const rpcResult = await supabase.rpc('update_tenant_company_settings', {
+        p_tenant_id: tenant.id,
+        p_name: companyForm.name.trim(),
+        p_name_ar: companyForm.name_ar.trim() || null,
+        p_phone: companyForm.phone,
+        p_address: companyForm.address,
+        p_base_currency: companyForm.base_currency,
+      });
+
+      if (rpcResult.error && !['PGRST202', '42883'].includes(rpcResult.error.code ?? '')) {
+        throw rpcResult.error;
+      }
+
+      // Compatibility while the reviewed migration is still unapplied:
+      // use the existing RLS-protected update only if the RPC does not exist.
+      if (rpcResult.error) {
+        const { data, error: fallbackError } = await supabase.from('tenants').update({
+          name: companyForm.name.trim(),
+          name_ar: companyForm.name_ar.trim() || null,
+          settings: { ...(tenant.settings ?? {}), phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
+        }).eq('id', tenant.id).select('id').maybeSingle();
+        if (fallbackError) throw fallbackError;
+        if (!data) throw new Error(lang === 'ar'
+          ? 'لم يتم تحديث بيانات المؤسسة. السياسة الحالية تمنع تعديل مؤسسات المستأجرين العاديين؛ يلزم تطبيق Migration الصلاحيات بعد اختباره.'
+          : 'Tenant settings were not updated. Current RLS blocks ordinary tenant edits; the reviewed permissions migration must be tested and applied.');
+      } else if (!rpcResult.data) {
+        throw new Error(lang === 'ar' ? 'لم يُرجع إجراء الحفظ معرّف المؤسسة.' : 'The save procedure did not return a tenant ID.');
+      }
       await refreshProfile();
       setSuccess(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
     } catch (err) {
