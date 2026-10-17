@@ -14,7 +14,7 @@ type Tab = 'company' | 'branches' | 'warehouses' | 'currencies' | 'appearance';
 export default function SettingsPage() {
   const { t, lang, setLang } = useI18n();
   const { mode, setMode } = useTheme();
-  const { profile, tenant } = useAuth();
+  const { profile, tenant, refreshProfile } = useAuth();
   const [tab, setTab] = useState<Tab>('company');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -37,16 +37,25 @@ export default function SettingsPage() {
   }, [tenant]);
 
   async function saveCompany() {
-    if (!profile?.tenant_id || !tenant) return;
-    setSaving(true); setError(''); setSuccess('');
-    try {
-      const { error: e } = await supabase.from('tenants').update({
-        name: companyForm.name.trim(),
-        name_ar: companyForm.name_ar.trim() || null,
-        settings: { ...tenant.settings, phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
-      }).eq('id', tenant.id);
-      if (e) throw e;
-      setSuccess(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
+    if (!profile?.tenant_id || !tenant) {
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة المرتبطة بحسابك.' : 'Could not identify the tenant linked to your account.');
+      return;
+    }
+    if (!companyForm.name.trim()) {
+      setError(lang === 'ar' ? 'اسم الشركة مطلوب.' : 'Company name is required.');
+      return;
+    }
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const { data, error: e } = await supabase.from('tenants').update({
+        name: companyForm.name.trim(),
+        name_ar: companyForm.name_ar.trim() || null,
+        settings: { ...(tenant.settings ?? {}), phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
+      }).eq('id', tenant.id).select('id').maybeSingle();
+      if (e) throw e;
+      if (!data) throw new Error(lang === 'ar' ? 'لم يتم تحديث بيانات المؤسسة. قد لا تسمح الصلاحيات أو سياسة RLS بالتعديل.' : 'Tenant settings were not updated. Permissions or RLS may be preventing the change.');
+      await refreshProfile();
+      setSuccess(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally { setSaving(false); }
