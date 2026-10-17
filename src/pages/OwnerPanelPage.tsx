@@ -298,24 +298,6 @@ function TenantsTab({
     }
   }
 
-  function openPlanModal(tenant: Tenant) {
-    if (tenant.is_owner) {
-      setError(
-        lang === 'ar'
-          ? 'لا يمكن تعديل مؤسسة مالك النظام.'
-          : 'The system owner tenant cannot be modified.'
-      );
-      return;
-    }
-
-    setSelectedTenant(tenant);
-    setNewTenantName(tenant.name ?? '');
-    setNewTenantNameAr(tenant.name_ar ?? '');
-    setNewPlanId(tenant.plan_id ?? '');
-    setNewStatus(tenant.status);
-    setError('');
-    setPlanModalOpen(true);
-  }
   const statusColors: Record<string, string> = {
     active: 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400',
     trial: 'bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400',
