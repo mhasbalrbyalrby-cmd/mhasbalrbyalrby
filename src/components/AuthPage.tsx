@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useTheme } from '@/lib/theme-context';
 import { supabase } from '@/lib/supabase';
-import { Calculator, Sun, Moon, Contrast, Globe, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { Calculator, Sun, Moon, Contrast, Globe, Loader2, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
 
 export default function AuthPage({ onGuestTour }: { onGuestTour?: () => void }) {
   const { t, lang, setLang } = useI18n();
@@ -11,6 +11,8 @@ export default function AuthPage({ onGuestTour }: { onGuestTour?: () => void }) 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -169,14 +171,26 @@ export default function AuthPage({ onGuestTour }: { onGuestTour?: () => void }) 
                 <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
                   {t('auth.password')}
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input-field"
-                  required
-                  autoComplete={isLogin ? 'current-password' : 'new-password'}
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input-field pe-11"
+                    required
+                    autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="absolute inset-y-0 end-2 flex items-center justify-center px-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                    aria-label={showPassword ? (lang === 'ar' ? 'إخفاء كلمة المرور' : 'Hide password') : (lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password')}
+                    aria-pressed={showPassword}
+                    title={showPassword ? (lang === 'ar' ? 'إخفاء كلمة المرور' : 'Hide password') : (lang === 'ar' ? 'إظهار كلمة المرور' : 'Show password')}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               {!isLogin && (
@@ -184,14 +198,26 @@ export default function AuthPage({ onGuestTour }: { onGuestTour?: () => void }) 
                   <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
                     {t('auth.confirm_password')}
                   </label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="input-field"
-                    required
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="input-field pe-11"
+                      required
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((visible) => !visible)}
+                      className="absolute inset-y-0 end-2 flex items-center justify-center px-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      aria-label={showConfirmPassword ? (lang === 'ar' ? 'إخفاء تأكيد كلمة المرور' : 'Hide confirm password') : (lang === 'ar' ? 'إظهار تأكيد كلمة المرور' : 'Show confirm password')}
+                      aria-pressed={showConfirmPassword}
+                      title={showConfirmPassword ? (lang === 'ar' ? 'إخفاء تأكيد كلمة المرور' : 'Hide confirm password') : (lang === 'ar' ? 'إظهار تأكيد كلمة المرور' : 'Show confirm password')}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               )}
 
