@@ -33,7 +33,7 @@ CREATE OR REPLACE FUNCTION public.set_invoice_line_base_quantity()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path TO 'public'
-AS $
+AS $unit_trigger$
 BEGIN
   IF NEW.conversion_factor IS NULL OR NEW.conversion_factor <= 0 THEN
     RAISE EXCEPTION 'conversion_factor must be greater than zero';
@@ -45,7 +45,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$;
+$unit_trigger$;
 DROP TRIGGER IF EXISTS invoice_lines_set_base_quantity ON public.invoice_lines;
 CREATE TRIGGER invoice_lines_set_base_quantity
 BEFORE INSERT OR UPDATE OF quantity, unit_id, conversion_factor, base_quantity
