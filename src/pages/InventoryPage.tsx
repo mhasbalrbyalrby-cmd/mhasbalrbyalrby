@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -6,7 +6,7 @@ import type { Product, Warehouse, UnitOfMeasure } from '@/types/database';
 import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
-  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload,
+  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera,
 } from 'lucide-react';
 
 export default function InventoryPage() {
@@ -26,6 +26,10 @@ export default function InventoryPage() {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importBusy, setImportBusy] = useState(false);
   const [importFileName, setImportFileName] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerStarting, setScannerStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
@@ -33,6 +37,81 @@ export default function InventoryPage() {
   });
 
   useEffect(() => { loadData(); }, [profile?.tenant_id]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+    let active = true;
+    let stream: MediaStream | null = null;
+    let frameId = 0;
+    setScannerError('');
+    setScannerStarting(true);
+
+    type DetectedBarcode = { rawValue: string };
+    type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
+    type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+
+    async function startScanner() {
+      try {
+        const DetectorClass = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
+        if (!DetectorClass) {
+          throw new Error(lang === 'ar'
+            ? 'المتصفح لا يدعم قراءة الباركود بالكاميرا. حدّث Chrome أو استخدم إدخال الباركود يدويًا.'
+            : 'This browser does not support camera barcode scanning. Update Chrome or enter the barcode manually.');
+        }
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error(lang === 'ar'
+            ? 'الكاميرا تتطلب اتصال HTTPS وصلاحية الوصول إليها.'
+            : 'Camera access requires HTTPS and permission to use the camera.');
+        }
+
+        const detector = new DetectorClass({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const video = videoRef.current;
+        if (!video) throw new Error(lang === 'ar' ? 'تعذر تشغيل معاينة الكاميرا.' : 'Could not initialize camera preview.');
+        video.srcObject = stream;
+        await video.play();
+        setScannerStarting(false);
+
+        const scanFrame = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              const codes = await detector.detect(video);
+              if (codes.length && codes[0].rawValue.trim()) {
+                const value = codes[0].rawValue.trim();
+                setForm((current) => ({ ...current, barcode: value }));
+                setScannerOpen(false);
+                return;
+              }
+            }
+          } catch {
+            // Continue scanning; transient frame errors should not stop the camera.
+          }
+          if (active) frameId = window.requestAnimationFrame(scanFrame);
+        };
+        frameId = window.requestAnimationFrame(scanFrame);
+      } catch (err) {
+        setScannerStarting(false);
+        setScannerError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تشغيل ماسح الباركود.' : 'Could not start barcode scanner.'));
+      }
+    }
+
+    void startScanner();
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frameId);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scannerOpen, lang]);
+
 
   async function loadData() {
     setLoading(true);
@@ -272,7 +351,7 @@ export default function InventoryPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكود' : 'Code'}</label><input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input-field font-mono" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><input type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><div className="flex gap-2"><input type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field min-w-0 flex-1" /><button type="button" onClick={() => { setScannerError(''); setScannerOpen(true); }} className="btn-secondary shrink-0 flex items-center gap-1.5" title={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'} aria-label={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'}><Camera className="w-4 h-4" /><span className="hidden sm:inline">{lang === 'ar' ? 'مسح بالكاميرا' : 'Scan'}</span></button></div></div>
           </div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.name')} *</label><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" required /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الاسم بالعربية' : 'Arabic Name'}</label><input type="text" value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} className="input-field" dir="rtl" /></div>
@@ -291,6 +370,18 @@ export default function InventoryPage() {
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
         </div>
 
+      </Modal>
+
+      <Modal open={scannerOpen} onClose={() => setScannerOpen(false)} title={lang === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scan barcode with camera'}>
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'وجّه الكاميرا الخلفية نحو الباركود وثبّت الصنف داخل الإطار حتى تتم قراءته.' : 'Point the rear camera at the barcode and hold the item steady in view.'}</p>
+          <div className="overflow-hidden rounded-xl bg-black">
+            <video ref={videoRef} autoPlay muted playsInline className="w-full max-h-80 object-contain" />
+          </div>
+          {scannerStarting && <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="w-4 h-4 animate-spin" />{lang === 'ar' ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</div>}
+          {scannerError && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 p-3 text-sm"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{scannerError}</span></div>}
+          <div className="flex justify-end"><button type="button" onClick={() => setScannerOpen(false)} className="btn-secondary">{t('common.cancel')}</button></div>
+        </div>
       </Modal>
 
       <Modal open={importOpen} onClose={() => !importBusy && setImportOpen(false)} title={lang === 'ar' ? 'استيراد المنتجات من CSV' : 'Import products from CSV'}>
