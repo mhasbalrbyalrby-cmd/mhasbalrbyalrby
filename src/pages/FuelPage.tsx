@@ -163,6 +163,12 @@ export default function FuelPage() {
         </div>
       </div>
 
+      <div className="rounded-lg border border-warning-300 bg-warning-50 dark:bg-warning-900/20 px-4 py-3 text-sm text-warning-800 dark:text-warning-200">
+        {ar
+          ? 'تنبيه: تُحفظ معاملات الوقود كسجلات تشغيلية فقط حاليًا؛ لم يُستكمل ترحيلها إلى القيود المحاسبية بعد. لا تعتمد عليها في التقارير المالية حتى اكتمال الربط.'
+          : 'Notice: fuel entries are currently stored as operational records only; journal posting is not implemented yet. Do not rely on them in financial reports until accounting integration is completed.'}
+      </div>
+
       <div className="flex gap-1 border-b border-[var(--color-border)]">
         <button onClick={() => setTab('transactions')} className={`nav-item !rounded-lg ${tab === 'transactions' ? 'nav-item-active' : ''}`}><Zap className="w-4 h-4" />{ar ? 'المعاملات' : 'Transactions'}</button>
         <button onClick={() => setTab('vehicles')} className={`nav-item !rounded-lg ${tab === 'vehicles' ? 'nav-item-active' : ''}`}><Car className="w-4 h-4" />{ar ? 'المركبات' : 'Vehicles'}</button>
