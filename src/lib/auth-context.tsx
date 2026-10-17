@@ -132,10 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenantMember(memberData);
 
       const tenantIsOwner = (tenantData as Tenant | null)?.is_owner ?? false;
-      setIsOwner(tenantIsOwner && !!memberData);
+      // Do not grant owner UI access based on tenant membership alone.
+      // The active member must also have the owner role in the owner tenant.
+      setIsOwner(false);
 
       if (!memberData) {
         setRole(null);
+        setIsOwner(false);
         setAuthError('no_membership');
         return;
       }
@@ -153,8 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
         setRole(roleData as Role | null);
+        setIsOwner(tenantIsOwner && (roleData as Role | null)?.name === 'owner');
       } else {
         setRole(null);
+        setIsOwner(false);
       }
     } catch (err) {
       if (!mountedRef.current || requestId !== loadRequestId.current) return;
