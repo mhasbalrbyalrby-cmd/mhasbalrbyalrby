@@ -9,6 +9,20 @@ import {
   Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera,
 } from 'lucide-react';
 
+function generateInternalBarcode(usedBarcodes: Set<string>): string {
+  // Prefix 20 is reserved for in-store/internal EAN-13 numbering in many retail systems.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const body = '20' + Math.floor(Math.random() * 10_000_000_000).toString().padStart(10, '0');
+    const sum = body.split('').reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+    const barcode = body + String((10 - (sum % 10)) % 10);
+    if (!usedBarcodes.has(barcode.toLowerCase())) {
+      usedBarcodes.add(barcode.toLowerCase());
+      return barcode;
+    }
+  }
+  throw new Error('Could not generate a unique internal barcode. Please try again.');
+}
+
 export default function InventoryPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -153,7 +167,7 @@ export default function InventoryPage() {
         name: form.name.trim(),
         name_ar: form.name_ar.trim() || null,
         type: form.type,
-        barcode: form.barcode.trim() || null,
+        barcode: form.barcode.trim() || (form.type === 'product' ? generateInternalBarcode(new Set(products.map((p) => (p.barcode ?? '').trim().toLowerCase()).filter(Boolean))) : null),
         cost_price: Number(form.cost_price) || 0,
         sale_price: Number(form.sale_price) || 0,
         min_stock: Number(form.min_stock) || 0,
@@ -241,7 +255,21 @@ export default function InventoryPage() {
         if (barcode) seenBarcodes.add(barcode);
       });
 
-      setImportRows(parsed);
+      if (errors.length === 0) {
+        const usedBarcodes = new Set([
+          ...existingBarcodes,
+          ...parsed.map((row) => (row.barcode ?? '').trim().toLowerCase()).filter(Boolean),
+        ]);
+        const rowsWithBarcodes = parsed.map((row) => ({
+          ...row,
+          barcode: (row.barcode ?? '').trim() || ((row.type ?? '').trim().toLowerCase() === 'product'
+            ? generateInternalBarcode(usedBarcodes)
+            : ''),
+        }));
+        setImportRows(rowsWithBarcodes);
+      } else {
+        setImportRows(parsed);
+      }
       setImportErrors(errors);
     } catch (err) {
       setImportErrors([err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر قراءة الملف.' : 'Could not read the file.')]);
@@ -386,7 +414,7 @@ export default function InventoryPage() {
 
       <Modal open={importOpen} onClose={() => !importBusy && setImportOpen(false)} title={lang === 'ar' ? 'استيراد المنتجات من CSV' : 'Import products from CSV'}>
         <div className="space-y-4">
-          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'نزّل القالب، واملأ صفوف المنتجات، ثم اختر ملف CSV. لن تُحفظ البيانات قبل الضغط على تأكيد الاستيراد.' : 'Download the template, fill in product rows, then choose a CSV file. Nothing is saved until you confirm the import.'}</p>
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'نزّل القالب واملأ صفوف المنتجات ثم اختر ملف CSV. اترك الباركود فارغًا إذا لم يكن للصنف باركود؛ سيُنشئ النظام باركودًا داخليًا تلقائيًا للمنتجات فقط. لن تُحفظ البيانات قبل تأكيد الاستيراد.' : 'Download the template, fill in product rows, then choose a CSV file. Leave barcode blank when a product has no barcode; an internal barcode will be generated automatically for products only. Nothing is saved until you confirm the import.'}</p>
           <button type="button" onClick={downloadImportTemplate} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{lang === 'ar' ? 'تنزيل القالب' : 'Download template'}</button>
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'ملف CSV' : 'CSV file'}</label>
