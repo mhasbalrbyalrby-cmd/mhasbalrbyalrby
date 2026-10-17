@@ -148,6 +148,8 @@ function TenantsTab({
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [newPlanId, setNewPlanId] = useState('');
   const [newStatus, setNewStatus] = useState<string>('active');
+  const [newTenantName, setNewTenantName] = useState('');
+  const [newTenantNameAr, setNewTenantNameAr] = useState('');
 
   async function handleStatusChange(tenant: Tenant, status: string) {
     if (tenant.is_owner) {
@@ -220,6 +222,8 @@ function TenantsTab({
     }
 
     setSelectedTenant(tenant);
+    setNewTenantName(tenant.name ?? '');
+    setNewTenantNameAr(tenant.name_ar ?? '');
     setNewPlanId(tenant.plan_id ?? '');
     setNewStatus(tenant.status);
     setError('');
@@ -238,6 +242,11 @@ function TenantsTab({
       return;
     }
 
+    if (!newTenantName.trim()) {
+      setError(lang === 'ar' ? 'اسم المؤسسة مطلوب.' : 'Tenant name is required.');
+      return;
+    }
+
     setActionLoading(selectedTenant.id);
     setError('');
 
@@ -245,6 +254,8 @@ function TenantsTab({
       const { data, error: updateError } = await supabase
         .from('tenants')
         .update({
+          name: newTenantName.trim(),
+          name_ar: newTenantNameAr.trim() || null,
           plan_id: newPlanId || null,
           status: newStatus,
         })
@@ -271,10 +282,14 @@ function TenantsTab({
           entity_id: selectedTenant.id,
           entity_name: selectedTenant.name,
           old_values: {
+            name: selectedTenant.name,
+            name_ar: selectedTenant.name_ar,
             plan_id: selectedTenant.plan_id,
             status: selectedTenant.status,
           },
           new_values: {
+            name: newTenantName.trim(),
+            name_ar: newTenantNameAr.trim() || null,
             plan_id: newPlanId || null,
             status: newStatus,
           },
@@ -431,8 +446,12 @@ function TenantsTab({
         {selectedTenant && (
           <div className="space-y-4">
             <div>
-              <div className="text-sm font-medium text-[var(--color-text)] mb-1">{lang === 'ar' ? 'المستأجر' : 'Tenant'}</div>
-              <div className="text-[var(--color-text-muted)]">{selectedTenant.name}</div>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'اسم المؤسسة' : 'Tenant name'} *</label>
+              <input type="text" maxLength={150} required value={newTenantName} onChange={(e) => setNewTenantName(e.target.value)} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'اسم المؤسسة بالعربية' : 'Tenant name in Arabic'}</label>
+              <input type="text" maxLength={150} dir="auto" value={newTenantNameAr} onChange={(e) => setNewTenantNameAr(e.target.value)} className="input-field" />
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الحالة' : 'Status'}</label>
@@ -779,6 +798,10 @@ function UsersTab({ lang }: { lang: string }) {
 
   async function handleInvite() {
     if (!inviteEmail.trim() || !inviteTenantId) return;
+    if (roles.some((role) => role.id === inviteRoleId && role.name.toLowerCase() === 'owner')) {
+      setError(lang === 'ar' ? 'لا يمكن دعوة مستخدم بدور مالك.' : 'Users cannot be invited with the owner role.');
+      return;
+    }
     setInviting(true);
     setError('');
     try {
@@ -808,6 +831,17 @@ function UsersTab({ lang }: { lang: string }) {
   }
 
   async function updateMemberRole(memberId: string, roleId: string) {
+    const member = members.find((item) => item.id === memberId);
+    const tenant = member ? tenants.find((item) => item.id === member.tenant_id) : null;
+    const selectedRole = roles.find((item) => item.id === roleId);
+    if (tenant?.is_owner) {
+      setError(lang === 'ar' ? 'لا يمكن تغيير دور عضوية مالك النظام من هذه القائمة.' : 'The system owner membership role cannot be changed here.');
+      return;
+    }
+    if (selectedRole?.name.toLowerCase() === 'owner') {
+      setError(lang === 'ar' ? 'لا يمكن تعيين دور مالك لمؤسسة عادية.' : 'The owner role cannot be assigned to a regular tenant.');
+      return;
+    }
     const { error: e } = await supabase.from('tenant_members').update({ role_id: roleId || null }).eq('id', memberId);
     if (e) { setError(e.message); return; }
     load();
@@ -866,10 +900,14 @@ function UsersTab({ lang }: { lang: string }) {
                     <td className="py-2 px-3 text-[var(--color-text-muted)]">{tenantName(p.tenant_id)}</td>
                     <td className="py-2 px-3">
                       {m ? (
-                        <select value={m.role_id ?? ''} onChange={(e) => updateMemberRole(m.id, e.target.value)} className="input-field !py-1 !text-xs">
-                          <option value="">{lang === 'ar' ? 'بدون دور' : 'No role'}</option>
-                          {roles.map((r) => <option key={r.id} value={r.id}>{lang === 'ar' ? r.name_ar ?? r.name : r.name}</option>)}
-                        </select>
+                        tenants.find((tenant) => tenant.id === m.tenant_id)?.is_owner ? (
+                          <span className="text-[var(--color-text-muted)]" title={lang === 'ar' ? 'دور عضوية مالك النظام للقراءة فقط' : 'System owner membership role is read-only'}>{roleName(m.role_id)}</span>
+                        ) : (
+                          <select value={m.role_id ?? ''} onChange={(e) => updateMemberRole(m.id, e.target.value)} className="input-field !py-1 !text-xs">
+                            <option value="">{lang === 'ar' ? 'بدون دور' : 'No role'}</option>
+                            {roles.filter((r) => r.name.toLowerCase() !== 'owner').map((r) => <option key={r.id} value={r.id}>{lang === 'ar' ? r.name_ar ?? r.name : r.name}</option>)}
+                          </select>
+                        )
                       ) : <span className="text-[var(--color-text-muted)]">—</span>}
                     </td>
                     <td className="py-2 px-3">
@@ -912,7 +950,7 @@ function UsersTab({ lang }: { lang: string }) {
             <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الدور' : 'Role'}</label>
             <select value={inviteRoleId} onChange={(e) => setInviteRoleId(e.target.value)} className="input-field">
               <option value="">{lang === 'ar' ? 'بدون دور' : 'No role'}</option>
-              {roles.filter((r) => r.name !== 'owner').map((r) => <option key={r.id} value={r.id}>{lang === 'ar' ? r.name_ar ?? r.name : r.name}</option>)}
+              {roles.filter((r) => r.name.toLowerCase() !== 'owner').map((r) => <option key={r.id} value={r.id}>{lang === 'ar' ? r.name_ar ?? r.name : r.name}</option>)}
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
