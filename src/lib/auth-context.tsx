@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isOwner, setIsOwner] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const loadInProgress = useRef(false);
+  const loadRequestId = useRef(0);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -43,8 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function loadUserData(userId: string) {
-    if (!supabase || loadInProgress.current) return;
-    loadInProgress.current = true;
+    if (!supabase) return;
+    // Each auth transition supersedes earlier requests so stale responses cannot
+    // overwrite the current user's state. Concurrent session checks are allowed.
+    const requestId = ++loadRequestId.current;
 
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -54,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (profileError) throw profileError;
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
       if (!profileData) {
         setProfile(null);
@@ -121,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (tenantError) throw tenantError;
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
       setTenant(tenantData as Tenant | null);
       setTenantMember(memberData);
@@ -145,17 +147,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle();
 
         if (roleError) throw roleError;
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
         setRole(roleData as Role | null);
       } else {
         setRole(null);
       }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
+      // Keep the UI error generic, but preserve diagnostic details for debugging.
+      console.error('[AuthContext] Failed to load authenticated user data:', err);
       setAuthError('load_failed');
-    } finally {
-      loadInProgress.current = false;
     }
   }
 
@@ -216,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (newSession?.user) {
             await loadUserData(newSession.user.id);
           } else {
+            // Invalidate any in-flight profile/tenant requests after sign-out.
+            loadRequestId.current += 1;
             setProfile(null);
             setTenant(null);
             setTenantMember(null);
