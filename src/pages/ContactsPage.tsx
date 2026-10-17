@@ -32,7 +32,7 @@ export default function ContactsPage() {
     city: '',
     id_number: '',
     notes: '',
-    roles: { customer: false, supplier: false, employee: false, agent: false, other: false },,
+    roles: { customer: false, supplier: false, employee: false, agent: false, other: false },
   });
 
   useEffect(() => {
