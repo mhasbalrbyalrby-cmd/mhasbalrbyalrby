@@ -119,8 +119,9 @@ export default function FuelPage() {
   async function saveFuel() {
     if (!profile?.tenant_id) return;
     if (!fForm.vehicle_id) { setError(ar ? 'اختر المركبة أولًا' : 'Select a vehicle first'); return; }
-    if (fForm.liters <= 0) { setError(ar ? 'الكمية يجب أن تكون أكبر من صفر' : 'Quantity must be greater than zero'); return; }
-    if (fForm.price_per_liter < 0 || fForm.odometer < 0) { setError(ar ? 'تحقق من السعر وقراءة العداد' : 'Check price and odometer values'); return; }
+    if (!fForm.date || Number.isNaN(Date.parse(fForm.date))) { setError(ar ? 'أدخل تاريخًا صحيحًا' : 'Enter a valid date'); return; }
+    if (!Number.isFinite(fForm.liters) || fForm.liters <= 0) { setError(ar ? 'الكمية يجب أن تكون رقمًا أكبر من صفر' : 'Quantity must be a number greater than zero'); return; }
+    if (!Number.isFinite(fForm.price_per_liter) || fForm.price_per_liter < 0 || !Number.isFinite(fForm.odometer) || fForm.odometer < 0) { setError(ar ? 'تحقق من السعر وقراءة العداد' : 'Check price and odometer values'); return; }
     const selectedVehicle = vehicles.find((v) => v.id === fForm.vehicle_id);
     if (!selectedVehicle) { setError(ar ? 'المركبة المحددة غير موجودة' : 'Selected vehicle was not found'); return; }
     setSaving(true); setError('');
