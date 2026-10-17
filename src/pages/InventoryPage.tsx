@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse, UnitOfMeasure } from '@/types/database';
+import type { Product, Warehouse, UnitOfMeasure, ProductUnit } from '@/types/database';
 import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
@@ -29,6 +29,8 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
+  const [productUnits, setProductUnits] = useState<ProductUnit[]>([]);
+  const [formUnits, setFormUnits] = useState<Array<{ id?: string; name: string; name_ar: string; factor: number; barcode: string; cost_price: number; sale_price: number; is_purchase_unit: boolean; is_sale_unit: boolean; allow_fraction: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -131,19 +133,23 @@ export default function InventoryPage() {
     setLoading(true);
     const tid = profile?.tenant_id;
     if (!tid) { setLoading(false); return; }
-    const [{ data: p }, { data: w }, { data: u }] = await Promise.all([
+    const [{ data: p }, { data: w }, { data: u }, { data: pu, error: puError }] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('warehouses').select('*').eq('tenant_id', tid),
       supabase.from('units_of_measure').select('*').eq('tenant_id', tid),
+      supabase.from('product_units').select('*').eq('tenant_id', tid),
     ]);
     setProducts((p as Product[]) ?? []);
     setWarehouses((w as Warehouse[]) ?? []);
     setUnits((u as UnitOfMeasure[]) ?? []);
+    if (puError) console.error('[InventoryPage] Could not load product units:', puError);
+    setProductUnits((pu as ProductUnit[]) ?? []);
     setLoading(false);
   }
 
   function openCreate() {
     setEditing(null);
+    setFormUnits([]);
     setForm({ code: '', name: '', name_ar: '', type: 'product', barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '' });
     setError('');
     setModalOpen(true);
@@ -151,6 +157,7 @@ export default function InventoryPage() {
 
   function openEdit(p: Product) {
     setEditing(p);
+    setFormUnits(productUnits.filter((unit) => unit.product_id === p.id).map((unit) => ({ id: unit.id, name: unit.name, name_ar: unit.name_ar ?? '', factor: Number(unit.factor), barcode: unit.barcode ?? '', cost_price: Number(unit.cost_price ?? 0), sale_price: Number(unit.sale_price ?? 0), is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction })));
     setForm({ code: p.code ?? '', name: p.name, name_ar: p.name_ar ?? '', type: p.type, barcode: p.barcode ?? '', cost_price: p.cost_price, sale_price: p.sale_price, min_stock: p.min_stock, unit_id: p.unit_id ?? '', category: p.category ?? '' });
     setError('');
     setModalOpen(true);
@@ -175,15 +182,39 @@ export default function InventoryPage() {
         category: form.category.trim() || null,
         is_active: true,
       };
+      let productId = editing?.id;
       if (editing) {
-        const { error: e } = await supabase.from('products').update(payload).eq('id', editing.id);
+        const { data, error: e } = await supabase.from('products').update(payload).eq('id', editing.id).select('id').maybeSingle();
         if (e) throw e;
+        if (!data?.id) throw new Error(lang === 'ar' ? 'لم يتم تحديث الصنف؛ تحقق من الصلاحيات.' : 'Product was not updated; check permissions.');
+        productId = data.id;
       } else {
-        const { error: e } = await supabase.from('products').insert({ ...payload, created_by: profile.id });
+        const { data, error: e } = await supabase.from('products').insert({ ...payload, created_by: profile.id }).select('id').single();
         if (e) throw e;
+        productId = data.id;
+      }
+      if (!productId) throw new Error(lang === 'ar' ? 'تعذر تحديد الصنف المحفوظ.' : 'Could not identify the saved product.');
+      if (form.type === 'product') {
+        const existingUnits = productUnits.filter((unit) => unit.product_id === productId);
+        const retainedIds = new Set(formUnits.map((unit) => unit.id).filter((id): id is string => Boolean(id)));
+        const removedIds = existingUnits.filter((unit) => !retainedIds.has(unit.id)).map((unit) => unit.id);
+        if (removedIds.length) {
+          const { error: deleteError } = await supabase.from('product_units').delete().eq('product_id', productId).in('id', removedIds);
+          if (deleteError) throw deleteError;
+        }
+        const unitPayloads = formUnits.map((unit) => ({
+          ...(unit.id ? { id: unit.id } : {}), tenant_id: profile.tenant_id!, product_id: productId!,
+          name: unit.name.trim(), name_ar: unit.name_ar.trim() || null, factor: Number(unit.factor),
+          barcode: unit.barcode.trim() || null, cost_price: Number(unit.cost_price), sale_price: Number(unit.sale_price),
+          is_base: false, is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction,
+        }));
+        if (unitPayloads.length) {
+          const { error: unitsError } = await supabase.from('product_units').upsert(unitPayloads);
+          if (unitsError) throw unitsError;
+        }
       }
       setModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally { setSaving(false); }
@@ -392,9 +423,20 @@ export default function InventoryPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'السعر' : 'Price'}</label><input type="number" step="0.01" value={form.sale_price || ''} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حد أدنى' : 'Min Stock'}</label><input type="number" step="0.01" value={form.min_stock || ''} onChange={(e) => setForm({ ...form, min_stock: Number(e.target.value) })} className="input-field" /></div>
           </div>
-          {units.length > 0 && (
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة' : 'Unit'}</label><select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} className="input-field"><option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>{units.map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name}</option>)}</select></div>
-          )}
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
+            <div className="flex items-center justify-between gap-2"><h3 className="font-semibold text-[var(--color-text)]">{lang === 'ar' ? 'وحدات القياس والعبوات' : 'Units & Packaging'}</h3><button type="button" onClick={() => setFormUnits((current) => [...current, { name: '', name_ar: '', factor: 1, barcode: '', cost_price: 0, sale_price: 0, is_purchase_unit: true, is_sale_unit: true, allow_fraction: false }])} className="btn-secondary text-sm">{lang === 'ar' ? '+ إضافة وحدة' : '+ Add unit'}</button></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</label><select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} className="input-field"><option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>{units.map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name}</option>)}</select><p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'التكلفة والسعر أعلاه هما تكلفة وسعر الوحدة الأساسية.' : 'The cost and price above apply to the base unit.'}</p></div>
+            {formUnits.length === 0 && <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'لم تُضف عبوات أكبر بعد.' : 'No larger packaging units added yet.'}</p>}
+            {formUnits.map((unit, index) => <div key={unit.id ?? `new-${index}`} className="grid grid-cols-2 md:grid-cols-6 gap-2 rounded-lg bg-[var(--color-bg)] p-2">
+              <input aria-label={lang === 'ar' ? 'اسم الوحدة' : 'Unit name'} placeholder={lang === 'ar' ? 'اسم الوحدة (كرتون)' : 'Unit name (carton)'} value={unit.name} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} className="input-field" />
+              <input aria-label={lang === 'ar' ? 'الاسم بالعربية' : 'Arabic unit name'} placeholder={lang === 'ar' ? 'الاسم بالعربية' : 'Arabic name'} value={unit.name_ar} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, name_ar: e.target.value } : item))} className="input-field" dir="auto" />
+              <input aria-label={lang === 'ar' ? 'معامل التحويل' : 'Conversion factor'} type="number" min="1" step="0.000001" placeholder={lang === 'ar' ? 'كم حبة؟' : 'Base units'} value={unit.factor} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, factor: Number(e.target.value) } : item))} className="input-field" />
+              <input aria-label={lang === 'ar' ? 'باركود الوحدة' : 'Unit barcode'} placeholder={lang === 'ar' ? 'باركود العبوة' : 'Unit barcode'} value={unit.barcode} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, barcode: e.target.value } : item))} className="input-field" />
+              <input aria-label={lang === 'ar' ? 'تكلفة الوحدة' : 'Unit cost'} type="number" min="0" step="0.0001" placeholder={lang === 'ar' ? 'تكلفة العبوة' : 'Unit cost'} value={unit.cost_price} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, cost_price: Number(e.target.value) } : item))} className="input-field" />
+              <input aria-label={lang === 'ar' ? 'سعر الوحدة' : 'Unit sale price'} type="number" min="0" step="0.0001" placeholder={lang === 'ar' ? 'سعر العبوة' : 'Unit price'} value={unit.sale_price} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, sale_price: Number(e.target.value) } : item))} className="input-field" />
+              <div className="col-span-2 md:col-span-6 flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={unit.is_purchase_unit} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, is_purchase_unit: e.target.checked } : item))} />{lang === 'ar' ? 'تُستخدم للشراء' : 'Purchase unit'}</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={unit.is_sale_unit} onChange={(e) => setFormUnits((current) => current.map((item, i) => i === index ? { ...item, is_sale_unit: e.target.checked } : item))} />{lang === 'ar' ? 'تُستخدم للبيع' : 'Sales unit'}</label><button type="button" onClick={() => setFormUnits((current) => current.filter((_, i) => i !== index))} className="text-error-500 text-sm">{lang === 'ar' ? 'حذف الوحدة' : 'Remove unit'}</button></div>
+            </div>)}
+          </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
         </div>
 
