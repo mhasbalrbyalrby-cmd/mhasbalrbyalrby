@@ -249,7 +249,7 @@ function WarehousesTab() {
 
 function CurrenciesTab() {
   const { t, lang } = useI18n();
-  const { profile, isOwner } = useAuth();
+  const { profile } = useAuth();
   type CurrencyRow = {
     id: string; tenant_id: string | null; code: string; name: string; name_ar: string | null;
     symbol: string | null; decimals: number; is_base: boolean; is_active: boolean;
@@ -312,6 +312,15 @@ function CurrenciesTab() {
     const code = form.code.trim().toUpperCase();
     if (!/^[A-Z0-9]{2,8}$/.test(code) || !form.name.trim()) {
       setError(lang === 'ar' ? 'أدخل رمز عملة من 2 إلى 8 أحرف/أرقام واسمًا مطلوبًا.' : 'Enter a 2–8 character currency code and a name.');
+      return;
+    }
+    const duplicate = currencies.some((currency) =>
+      currency.tenant_id === profile?.tenant_id &&
+      currency.code.toUpperCase() === code &&
+      currency.id !== editingCurrency?.id
+    );
+    if (duplicate) {
+      setError(lang === 'ar' ? 'رمز العملة موجود بالفعل في مؤسستك.' : 'That currency code already exists for this tenant.');
       return;
     }
     if (!Number.isInteger(form.decimals) || form.decimals < 0 || form.decimals > 6) {
