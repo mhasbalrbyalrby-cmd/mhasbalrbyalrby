@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
@@ -41,9 +41,16 @@ export default function ContactsPage() {
   }, [profile?.tenant_id]);
 
   async function loadParties() {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     const tenantId = profile?.tenant_id;
-    if (!tenantId) { setLoading(false); return; }
+    if (!tenantId) {
+      setParties([]);
+      setPartyRoles({});
+      setError('');
+      setLoading(false);
+      return;
+    }
 
     try {
       setError('');
@@ -53,6 +60,7 @@ export default function ContactsPage() {
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
+      if (requestId !== loadRequestId.current) return;
       if (partiesError) throw partiesError;
 
       const partyList = (data ?? []) as Party[];
@@ -68,6 +76,7 @@ export default function ContactsPage() {
         .select('*')
         .in('party_id', partyList.map((party) => party.id));
 
+      if (requestId !== loadRequestId.current) return;
       if (rolesError) throw rolesError;
 
       const rolesMap: Record<string, PartyRole[]> = {};
@@ -77,9 +86,11 @@ export default function ContactsPage() {
       });
       setPartyRoles(rolesMap);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('error.generic'));
+      if (requestId === loadRequestId.current) {
+        setError(err instanceof Error ? err.message : t('error.generic'));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) setLoading(false);
     }
   }
 
