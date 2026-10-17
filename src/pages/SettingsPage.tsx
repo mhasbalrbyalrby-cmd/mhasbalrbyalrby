@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import type { Tenant } from '@/types/database';
 import {
   Settings, Building2, MapPin, Coins, Save, Loader2,
-  AlertCircle, CheckCircle2, Sun, Moon, Contrast, Globe,
+  AlertCircle, CheckCircle2, Sun, Moon, Contrast, Globe, Pencil, Trash2, Star, Plus, X,
 } from 'lucide-react';
 
 type Tab = 'company' | 'branches' | 'warehouses' | 'currencies' | 'appearance';
