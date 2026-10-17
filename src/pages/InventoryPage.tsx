@@ -31,6 +31,7 @@ export default function InventoryPage() {
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
   const [productUnits, setProductUnits] = useState<ProductUnit[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [stockMovementsLoadError, setStockMovementsLoadError] = useState('');
   const [stocktakeOpen, setStocktakeOpen] = useState(false);
   const [stocktakeProductId, setStocktakeProductId] = useState('');
   const [stocktakeWarehouseId, setStocktakeWarehouseId] = useState('');
@@ -141,18 +142,39 @@ export default function InventoryPage() {
     setLoading(true);
     const tid = profile?.tenant_id;
     if (!tid) { setLoading(false); return; }
-    const [{ data: p }, { data: w }, { data: u }, { data: pu, error: puError }, { data: sm, error: smError }] = await Promise.all([
+    const [{ data: p }, { data: w }, { data: u }, { data: pu, error: puError }] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('warehouses').select('*').eq('tenant_id', tid),
       supabase.from('units_of_measure').select('*').eq('tenant_id', tid),
       supabase.from('product_units').select('*').eq('tenant_id', tid),
-      supabase.from('stock_movements').select('*').eq('tenant_id', tid),
     ]);
     setProducts((p as Product[]) ?? []);
     setWarehouses((w as Warehouse[]) ?? []);
     setUnits((u as UnitOfMeasure[]) ?? []);
     if (puError) console.error('[InventoryPage] Could not load product units:', puError);
     setProductUnits((pu as ProductUnit[]) ?? []);
+
+    const movementRows: StockMovement[] = [];
+    let movementOffset = 0;
+    let movementLoadError = '';
+    while (true) {
+      const { data: movementPage, error: movementError } = await supabase
+        .from('stock_movements')
+        .select('*')
+        .eq('tenant_id', tid)
+        .order('created_at', { ascending: true })
+        .range(movementOffset, movementOffset + 999);
+      if (movementError) {
+        movementLoadError = movementError.message;
+        break;
+      }
+      const batch = (movementPage as StockMovement[]) ?? [];
+      movementRows.push(...batch);
+      if (batch.length < 1000) break;
+      movementOffset += 1000;
+    }
+    setStockMovementsLoadError(movementLoadError);
+    setStockMovements(movementLoadError ? [] : movementRows);
     setLoading(false);
   }
 
@@ -266,6 +288,10 @@ export default function InventoryPage() {
   const stocktakeDelta = stocktakeCountedBase - stocktakeCurrentBase;
 
   async function saveStocktake() {
+    if (stockMovementsLoadError) {
+      setStocktakeError(lang === 'ar' ? 'تعذر تحميل سجل حركات المخزون؛ أعد تحميل الصفحة قبل الجرد.' : 'Stock movements could not be loaded; reload the page before stocktaking.');
+      return;
+    }
     if (!profile?.tenant_id || !profile.id || !stocktakeProduct || !stocktakeWarehouseId) {
       setStocktakeError(lang === 'ar' ? 'اختر الصنف والمخزن أولًا.' : 'Choose a product and warehouse first.');
       return;
@@ -495,7 +521,7 @@ export default function InventoryPage() {
       <Modal open={stocktakeOpen} onClose={() => !stocktakeSaving && setStocktakeOpen(false)} title={lang === 'ar' ? 'جرد المخزون بوحدات متعددة' : 'Multi-unit stocktake'}>
         <div className="space-y-4">
           <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'أدخل الكمية الفعلية بالوحدة التي عُدّت. سيحوّلها النظام إلى الوحدة الأساسية ويسجل فرق الجرد كحركة تسوية.' : 'Enter the physically counted quantity in the selected unit. The count is converted to the base unit and the difference is recorded as an adjustment.'}</p>
-          {stocktakeError && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm p-3"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{stocktakeError}</span></div>}
+          {(stocktakeError || stockMovementsLoadError) && <div className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm p-3"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{stocktakeError || (lang === 'ar' ? 'تعذر تحميل حركات المخزون؛ لن يسمح بتسجيل الجرد حتى نجاح التحميل.' : 'Stock movements failed to load; stocktake is disabled until loading succeeds.')}</span></div>}
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الصنف' : 'Product'}</label><select value={stocktakeProductId} onChange={(e) => { setStocktakeProductId(e.target.value); setStocktakeUnitId('base'); }} className="input-field"><option value="">{lang === 'ar' ? 'اختر صنفًا' : 'Select product'}</option>{products.filter((p) => p.type === 'product').map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}</select></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'المخزن' : 'Warehouse'}</label><select value={stocktakeWarehouseId} onChange={(e) => setStocktakeWarehouseId(e.target.value)} className="input-field"><option value="">{lang === 'ar' ? 'اختر مخزنًا' : 'Select warehouse'}</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{lang === 'ar' ? w.name_ar ?? w.name : w.name}</option>)}</select></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'وحدة العد' : 'Count unit'}</label><select value={stocktakeUnitId} onChange={(e) => setStocktakeUnitId(e.target.value)} className="input-field" disabled={!stocktakeProductId}><option value="base">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</option>{productUnits.filter((u) => u.product_id === stocktakeProductId).map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name} (×{u.factor})</option>)}</select></div>
@@ -507,7 +533,7 @@ export default function InventoryPage() {
           </div>
           {stocktakeProduct && <p className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'معامل التحويل الحالي: ' : 'Conversion factor: '}{stocktakeFactor}. {lang === 'ar' ? 'النتيجة معروضة بالوحدة الأساسية للصنف.' : 'Results are shown in the product base unit.'}</p>}
           {warehouses.length === 0 && <p className="text-sm text-error-500">{lang === 'ar' ? 'أضف مخزنًا قبل تسجيل الجرد.' : 'Add a warehouse before recording stocktake.'}</p>}
-          <div className="flex gap-2 justify-end border-t border-[var(--color-border)] pt-3"><button type="button" onClick={() => setStocktakeOpen(false)} disabled={stocktakeSaving} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={saveStocktake} disabled={stocktakeSaving || warehouses.length === 0 || !stocktakeProductId || !stocktakeWarehouseId} className="btn-primary flex items-center gap-2">{stocktakeSaving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'حفظ تسوية الجرد' : 'Save stock adjustment'}</button></div>
+          <div className="flex gap-2 justify-end border-t border-[var(--color-border)] pt-3"><button type="button" onClick={() => setStocktakeOpen(false)} disabled={stocktakeSaving} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={saveStocktake} disabled={stocktakeSaving || Boolean(stockMovementsLoadError) || warehouses.length === 0 || !stocktakeProductId || !stocktakeWarehouseId} className="btn-primary flex items-center gap-2">{stocktakeSaving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'حفظ تسوية الجرد' : 'Save stock adjustment'}</button></div>
         </div>
       </Modal>
 
