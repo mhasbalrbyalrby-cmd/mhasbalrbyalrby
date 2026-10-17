@@ -280,8 +280,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    if (supabase) {
-      await supabase.auth.signOut();
+    if (!supabase) throw new Error(supabaseConfigError ?? 'Supabase is not configured.');
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('[AuthContext] Sign-out failed:', error.message);
+      throw error;
     }
   }
 
