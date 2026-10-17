@@ -28,6 +28,30 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE public.invoice_lines ADD CONSTRAINT invoice_lines_base_quantity_nonnegative CHECK (base_quantity >= 0);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Keep compatibility with older clients that insert invoice_lines without the new snapshot columns.
+CREATE OR REPLACE FUNCTION public.set_invoice_line_base_quantity()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $
+BEGIN
+  IF NEW.conversion_factor IS NULL OR NEW.conversion_factor <= 0 THEN
+    RAISE EXCEPTION 'conversion_factor must be greater than zero';
+  END IF;
+  IF NEW.unit_id IS NULL AND NEW.conversion_factor = 1 THEN
+    NEW.base_quantity := NEW.quantity;
+  ELSIF NEW.base_quantity IS NULL OR NEW.base_quantity = 1 THEN
+    NEW.base_quantity := NEW.quantity * NEW.conversion_factor;
+  END IF;
+  RETURN NEW;
+END;
+$;
+DROP TRIGGER IF EXISTS invoice_lines_set_base_quantity ON public.invoice_lines;
+CREATE TRIGGER invoice_lines_set_base_quantity
+BEFORE INSERT OR UPDATE OF quantity, unit_id, conversion_factor, base_quantity
+ON public.invoice_lines
+FOR EACH ROW EXECUTE FUNCTION public.set_invoice_line_base_quantity();
+
 -- Preserve the current posting workflow; stock movements now use immutable base quantity.
 CREATE OR REPLACE FUNCTION public.post_invoice_unchecked_20261014(p_invoice_id uuid)
  RETURNS jsonb
