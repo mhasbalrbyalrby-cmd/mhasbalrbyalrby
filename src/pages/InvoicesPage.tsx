@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
+import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus, Product, Warehouse, Shift } from '@/types/database';
 import { exportToCSV } from '@/lib/csv';
