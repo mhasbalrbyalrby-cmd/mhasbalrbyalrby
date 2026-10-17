@@ -165,6 +165,20 @@ export default function InventoryPage() {
 
   async function handleSave() {
     if (!form.name.trim()) { setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required'); return; }
+    if (Number(form.cost_price) < 0 || Number(form.sale_price) < 0 || Number(form.min_stock) < 0) { setError(lang === 'ar' ? 'التكلفة والسعر والحد الأدنى يجب ألا تكون سالبة.' : 'Cost, sale price, and minimum stock cannot be negative.'); return; }
+    if (form.type === 'product') {
+      for (const [index, unit] of formUnits.entries()) {
+        if (!unit.name.trim()) { setError((lang === 'ar' ? 'اسم الوحدة مطلوب في السطر ' : 'Unit name is required on row ') + (index + 1)); return; }
+        if (!Number.isFinite(Number(unit.factor)) || Number(unit.factor) <= 1) { setError((lang === 'ar' ? 'معامل تحويل الوحدة الكبرى يجب أن يكون أكبر من 1 في السطر ' : 'Packaging conversion factor must be greater than 1 on row ') + (index + 1)); return; }
+        if (!Number.isFinite(Number(unit.cost_price)) || Number(unit.cost_price) < 0 || !Number.isFinite(Number(unit.sale_price)) || Number(unit.sale_price) < 0) { setError((lang === 'ar' ? 'أسعار العبوة يجب ألا تكون سالبة.' : 'Packaging prices cannot be negative.')); return; }
+      }
+      const enteredBarcodes = formUnits.map((unit) => unit.barcode.trim().toLowerCase()).filter(Boolean);
+      if (new Set(enteredBarcodes).size !== enteredBarcodes.length) { setError(lang === 'ar' ? 'يوجد باركود مكرر بين العبوات.' : 'Duplicate barcode among packaging units.'); return; }
+      const existingBaseBarcodes = products.filter((item) => item.id !== editing?.id).map((item) => (item.barcode ?? '').trim().toLowerCase()).filter(Boolean);
+      const existingUnitBarcodes = productUnits.filter((unit) => unit.product_id !== editing?.id).map((unit) => (unit.barcode ?? '').trim().toLowerCase()).filter(Boolean);
+      const allExisting = new Set([...existingBaseBarcodes, ...existingUnitBarcodes]);
+      if (enteredBarcodes.some((barcode) => allExisting.has(barcode) || barcode === form.barcode.trim().toLowerCase())) { setError(lang === 'ar' ? 'باركود العبوة مكرر مع صنف أو وحدة أخرى.' : 'Packaging barcode duplicates another product or unit.'); return; }
+    }
     if (!profile?.tenant_id) return;
     setSaving(true); setError('');
     try {
