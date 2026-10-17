@@ -210,7 +210,7 @@ export default function FixedAssetsPage() {
                   <td className="py-2 px-3 text-end font-medium text-success-600">{a.current_value?.toFixed(2) ?? '0'}</td>
                   <td className="py-2 px-3 text-center">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.status === 'active' ? 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400' : a.status === 'disposed' ? 'bg-error-100 text-error-700 dark:bg-error-900/30 dark:text-error-400' : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'}`}>
-                      {ar ? STATUS_AR[a.status] ?? a.status : a.status}
+                      {ar ? STATUS_AR[a.status ?? ''] ?? a.status ?? '—' : a.status ?? '—'}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-end">
