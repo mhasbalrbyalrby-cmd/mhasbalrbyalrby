@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -50,6 +50,7 @@ export default function FuelPage() {
   const [vehicleModal, setVehicleModal] = useState(false);
   const [fuelModal, setFuelModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const loadRequestId = useRef(0);
 
   const [vForm, setVForm] = useState({ plate_number: '', make: '', model: '', model_year: 0, fuel_type: 'diesel', current_odometer: 0 });
   const [fForm, setFForm] = useState({ vehicle_id: '', date: new Date().toISOString().slice(0, 10), liters: 0, price_per_liter: 0, odometer: 0, station: '', notes: '' });
@@ -57,6 +58,7 @@ export default function FuelPage() {
   const ar = lang === 'ar';
 
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     const tid = profile?.tenant_id;
     if (!tid) {
@@ -70,15 +72,18 @@ export default function FuelPage() {
         supabase.from('vehicles').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
         supabase.from('fuel_transactions').select('*').eq('tenant_id', tid).order('transaction_date', { ascending: false }).limit(200),
       ]);
+      if (requestId !== loadRequestId.current) return;
       if (vehiclesError) throw vehiclesError;
       if (fuelError) throw fuelError;
       setVehicles((v as Vehicle[]) ?? []);
       setTransactions((f as FuelTransaction[]) ?? []);
       setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : (ar ? 'تعذر تحميل بيانات الأسطول' : 'Unable to load fleet data'));
+      if (requestId === loadRequestId.current) {
+        setError(err instanceof Error ? err.message : (ar ? 'تعذر تحميل بيانات الأسطول' : 'Unable to load fleet data'));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) setLoading(false);
     }
   }, [profile?.tenant_id, ar]);
 
