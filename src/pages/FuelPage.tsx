@@ -210,7 +210,7 @@ export default function FuelPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {vehicles.map((v) => {
-              const totalFuel = transactions.filter((f) => f.vehicle_id === v.id).reduce((s, f) => s + f.total_cost, 0);
+              const totalFuel = transactions.filter((f) => f.vehicle_id === v.id).reduce((s, f) => s + f.total_amount, 0);
               return (
                 <div key={v.id} className="card">
                   <div className="flex items-center gap-2 mb-2">
