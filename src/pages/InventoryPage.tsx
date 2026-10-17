@@ -196,36 +196,28 @@ export default function InventoryPage() {
         category: form.category.trim() || null,
         is_active: true,
       };
-      let productId = editing?.id;
-      if (editing) {
-        const { data, error: e } = await supabase.from('products').update(payload).eq('id', editing.id).select('id').maybeSingle();
-        if (e) throw e;
-        if (!data?.id) throw new Error(lang === 'ar' ? 'لم يتم تحديث الصنف؛ تحقق من الصلاحيات.' : 'Product was not updated; check permissions.');
-        productId = data.id;
-      } else {
-        const { data, error: e } = await supabase.from('products').insert({ ...payload, created_by: profile.id }).select('id').single();
-        if (e) throw e;
-        productId = data.id;
-      }
-      if (!productId) throw new Error(lang === 'ar' ? 'تعذر تحديد الصنف المحفوظ.' : 'Could not identify the saved product.');
-      if (form.type === 'product') {
-        const existingUnits = productUnits.filter((unit) => unit.product_id === productId);
-        const retainedIds = new Set(formUnits.map((unit) => unit.id).filter((id): id is string => Boolean(id)));
-        const removedIds = existingUnits.filter((unit) => !retainedIds.has(unit.id)).map((unit) => unit.id);
-        if (removedIds.length) {
-          const { error: deleteError } = await supabase.from('product_units').delete().eq('product_id', productId).in('id', removedIds);
-          if (deleteError) throw deleteError;
-        }
-        const unitPayloads = formUnits.map((unit) => ({
-          ...(unit.id ? { id: unit.id } : {}), tenant_id: profile.tenant_id!, product_id: productId!,
-          name: unit.name.trim(), name_ar: unit.name_ar.trim() || null, factor: Number(unit.factor),
-          barcode: unit.barcode.trim() || null, cost_price: Number(unit.cost_price), sale_price: Number(unit.sale_price),
-          is_base: false, is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction,
-        }));
-        if (unitPayloads.length) {
-          const { error: unitsError } = await supabase.from('product_units').upsert(unitPayloads);
-          if (unitsError) throw unitsError;
-        }
+      const unitPayloads = form.type === 'product' ? formUnits.map((unit) => ({
+        ...(unit.id ? { id: unit.id } : {}),
+        name: unit.name.trim(),
+        name_ar: unit.name_ar.trim() || null,
+        factor: Number(unit.factor),
+        barcode: unit.barcode.trim() || null,
+        cost_price: Number(unit.cost_price),
+        sale_price: Number(unit.sale_price),
+        is_purchase_unit: unit.is_purchase_unit,
+        is_sale_unit: unit.is_sale_unit,
+        allow_fraction: unit.allow_fraction,
+      })) : [];
+      const { data: savedProductId, error: saveError } = await supabase.rpc('save_product_with_units', {
+        p_product_id: editing?.id ?? null,
+        p_product: payload,
+        p_units: unitPayloads,
+      });
+      if (saveError) throw saveError;
+      if (typeof savedProductId !== 'string' || !savedProductId) {
+        throw new Error(lang === 'ar'
+          ? 'لم يُرجع الحفظ معرّف الصنف؛ لم يتم تأكيد نجاح العملية.'
+          : 'Save did not return a product ID; success could not be confirmed.');
       }
       setModalOpen(false);
       await loadData();
