@@ -203,6 +203,19 @@ export default function InvoicesPage() {
     setModalOpen(true);
   }
 
+  function changeInvoiceType(nextType: InvoiceType) {
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      lines: current.lines.map((line) => {
+        const product = products.find((item) => item.id === line.product_id);
+        const unit = productUnits.find((item) => item.id === line.unit_id);
+        const isSale = nextType === 'sale' || nextType === 'return_sale';
+        return { ...line, unit_price: unit ? Number(isSale ? unit.sale_price : unit.cost_price) : product ? (isSale ? product.sale_price : product.cost_price) : line.unit_price };
+      }),
+    }));
+  }
+
   function addLine() {
     setForm({ ...form, lines: [...form.lines, { product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }] });
   }
@@ -470,7 +483,7 @@ export default function InvoicesPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'النوع' : 'Type'}</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as InvoiceType })} className="input-field">
+              <select value={form.type} onChange={(e) => changeInvoiceType(e.target.value as InvoiceType)} className="input-field">
                 <option value="sale">{lang === 'ar' ? 'مبيعات' : 'Sale'}</option>
                 <option value="purchase">{lang === 'ar' ? 'مشتريات' : 'Purchase'}</option>
                 <option value="return_sale">{lang === 'ar' ? 'مرتجع مبيعات' : 'Return Sale'}</option>
@@ -524,12 +537,12 @@ export default function InvoicesPage() {
                 <select
                   value={line.product_id}
                   onChange={(e) => updateLine(idx, 'product_id', e.target.value)}
-                  className="input-field col-span-3 !text-xs"
+                  className="input-field col-span-2 !text-xs"
                 >
                   <option value="">{lang === 'ar' ? 'منتج/خدمة/يدوي' : 'Product/Service/Manual'}</option>
                   {products.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}{p.type === 'service' ? (lang === 'ar' ? ' (خدمة)' : ' (service)') : ''}</option>)}
                 </select>
-                <input type="text" placeholder={lang === 'ar' ? 'الوصف' : 'Description'} value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} className="input-field col-span-3" />
+                <input type="text" placeholder={lang === 'ar' ? 'الوصف' : 'Description'} value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} className="input-field col-span-2" />
                 <select value={line.unit_id} onChange={(e) => updateLineUnit(idx, e.target.value)} className="input-field col-span-2 !text-xs" aria-label={lang === 'ar' ? 'وحدة الفاتورة' : 'Invoice unit'}>
                   <option value="">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</option>
                   {productUnits.filter((unit) => unit.product_id === line.product_id && ((form.type === 'sale' || form.type === 'return_sale') ? unit.is_sale_unit : unit.is_purchase_unit)).map((unit) => <option key={unit.id} value={unit.id}>{lang === 'ar' ? unit.name_ar ?? unit.name : unit.name}</option>)}
