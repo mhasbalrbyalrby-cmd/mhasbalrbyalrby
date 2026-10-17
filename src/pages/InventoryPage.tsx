@@ -168,7 +168,7 @@ export default function InventoryPage() {
     const track = cameraTrackRef.current;
     if (!track || !torchSupported) return;
     try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet] });
+      await track.applyConstraints({ advanced: [{ torch: !torchOn } as unknown as MediaTrackConstraintSet] });
       setTorchOn((current) => !current);
       setScannerError('');
     } catch (torchError) {
