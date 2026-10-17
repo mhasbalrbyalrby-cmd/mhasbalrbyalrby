@@ -281,9 +281,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     if (!supabase) throw new Error(supabaseConfigError ?? 'Supabase is not configured.');
-    const { error } = await supabase.auth.signOut();
+
+    // Signing out locally must not depend on a network request to Supabase.
+    // The SDK emits SIGNED_OUT and clears persisted tokens for this browser.
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
-      console.error('[AuthContext] Sign-out failed:', error.message);
+      console.error('[AuthContext] Local sign-out failed:', error.message);
       throw error;
     }
   }
