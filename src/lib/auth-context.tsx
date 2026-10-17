@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
 
   const loadRequestId = useRef(0);
+  const activeUserIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -200,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setSession(session);
         setUser(session?.user ?? null);
+        activeUserIdRef.current = session?.user?.id ?? null;
 
         if (session?.user) {
           void loadUserData(session.user.id);
@@ -228,14 +230,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           resolved = true;
           clearTimeout(timeoutId);
 
+          const nextUserId = newSession?.user?.id ?? null;
+          const accountChanged = activeUserIdRef.current !== nextUserId;
+          activeUserIdRef.current = nextUserId;
+
           setSession(newSession);
           setUser(newSession?.user ?? null);
 
           if (newSession?.user) {
+            if (accountChanged) {
+              // Never leave the previous account's tenant context visible while
+              // the newly authenticated account is being resolved.
+              loadRequestId.current += 1;
+              setProfile(null);
+              setTenant(null);
+              setTenantMember(null);
+              setRole(null);
+              setIsOwner(false);
+              setAuthError(null);
+            }
             setLoading(true);
             await loadUserData(newSession.user.id);
           } else {
             // Invalidate any in-flight profile/tenant requests after sign-out.
+            activeUserIdRef.current = null;
             loadRequestId.current += 1;
             setProfile(null);
             setTenant(null);
