@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, FileText, Receipt, Calculator,
   Package, ArrowLeftRight, BarChart3, Clock, Settings,
   Shield, BookOpen, Brain, Menu, X, Sun, Moon, Contrast, Globe,
-  LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building,
+  LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building, AlertCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -51,6 +51,8 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [enabledAddons, setEnabledAddons] = useState<Set<string>>(new Set());
+  const [logoutError, setLogoutError] = useState('');
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => {
     if (!profile?.tenant_id) return;
@@ -231,15 +233,26 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
                         </div>
                       )}
                     </div>
+                    {logoutError && <div role="alert" className="mx-2 mb-2 flex gap-2 text-xs text-error-600 dark:text-error-400"><AlertCircle className="w-4 h-4 shrink-0" /><span>{logoutError}</span></div>}
                     <button
-                      onClick={() => {
-                        signOut();
-                        setUserMenuOpen(false);
+                      disabled={logoutBusy}
+                      onClick={async () => {
+                        setLogoutBusy(true);
+                        setLogoutError('');
+                        try {
+                          await signOut();
+                          setUserMenuOpen(false);
+                        } catch (error) {
+                          console.error('[DashboardLayout] Sign-out failed:', error instanceof Error ? error.message : 'Unknown error');
+                          setLogoutError(lang === 'ar' ? 'تعذر إنهاء الجلسة محليًا. تحقق من إعدادات المتصفح ثم أعد المحاولة.' : 'Could not clear the local session. Check browser settings and retry.');
+                        } finally {
+                          setLogoutBusy(false);
+                        }
                       }}
-                      className="nav-item w-full text-error-600 dark:text-error-400"
+                      className="nav-item w-full text-error-600 dark:text-error-400 disabled:opacity-50"
                     >
                       <LogOut className="w-4 h-4" />
-                      <span>{t('auth.logout')}</span>
+                      <span>{logoutBusy ? (lang === 'ar' ? 'جارٍ الخروج…' : 'Signing out…') : t('auth.logout')}</span>
                     </button>
                   </div>
                 </>
