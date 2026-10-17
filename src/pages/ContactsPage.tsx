@@ -21,6 +21,7 @@ export default function ContactsPage() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadRequestId = useRef(0);
 
   const [form, setForm] = useState({
     name: '',
