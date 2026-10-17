@@ -102,6 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resolvedTenantId = memberData?.tenant_id ?? null;
       }
 
+      // A sign-in/sign-out or account switch may have happened while membership
+      // was loading. Do not let this request update any auth state if superseded.
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
+
       if (!resolvedTenantId) {
         setProfile(profileData as Profile);
         setTenant(null);
@@ -112,10 +116,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Keep the effective tenant available to existing modules in memory.
-      // This does not update profiles.tenant_id in Supabase.
-      setProfile({ ...(profileData as Profile), tenant_id: resolvedTenantId });
-
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*')
@@ -125,6 +125,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (tenantError) throw tenantError;
       if (!mountedRef.current || requestId !== loadRequestId.current) return;
 
+      // Publish profile/tenant state only after this request is still current.
+      // This does not update profiles.tenant_id in Supabase.
+      setProfile({ ...(profileData as Profile), tenant_id: resolvedTenantId });
       setTenant(tenantData as Tenant | null);
       setTenantMember(memberData);
 
@@ -214,6 +217,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, newSession) => {
         (async () => {
           if (!mountedRef.current) return;
+
+          // If an auth event arrives before getSession() resolves, the event is
+          // the newer source of truth; ignore the pending initial session result.
+          resolved = true;
+          clearTimeout(timeoutId);
 
           setSession(newSession);
           setUser(newSession?.user ?? null);
