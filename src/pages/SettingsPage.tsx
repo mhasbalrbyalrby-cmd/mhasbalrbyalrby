@@ -56,9 +56,16 @@ export default function SettingsPage() {
       if (!data) throw new Error(lang === 'ar' ? 'لم يتم تحديث بيانات المؤسسة. قد لا تسمح الصلاحيات أو سياسة RLS بالتعديل.' : 'Tenant settings were not updated. Permissions or RLS may be preventing the change.');
       await refreshProfile();
       setSuccess(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('error.generic'));
-    } finally { setSaving(false); }
+    } catch (err) {
+      const failure = err as { code?: string; message?: string };
+      if (failure?.code === '42501') {
+        setError(lang === 'ar'
+          ? 'رفضت قاعدة البيانات التعديل بسياسة الصلاحيات الحالية. سياسة owner_update_tenants تسمح بتعديل سجل مؤسسة مالك النظام فقط؛ يلزم اعتماد سياسة آمنة أو إجراء مقيّد للدور المخوّل قبل تمكين تعديل مؤسسات المستأجرين.'
+          : 'The database rejected this update under current permissions. owner_update_tenants only permits the system-owner tenant; a role-restricted policy or RPC is required to edit tenant companies safely.');
+      } else {
+        setError(failure?.message ?? t('error.generic'));
+      }
+    } finally { setSaving(false); }
   }
 
   const tabs: { code: Tab; icon: typeof Building2; label: string }[] = [
