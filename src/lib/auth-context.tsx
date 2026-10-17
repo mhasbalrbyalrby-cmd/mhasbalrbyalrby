@@ -158,6 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Keep the UI error generic, but preserve diagnostic details for debugging.
       console.error('[AuthContext] Failed to load authenticated user data:', err);
       setAuthError('load_failed');
+    } finally {
+      // Only the newest request may end the loading state.
+      if (mountedRef.current && requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -189,9 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          loadUserData(session.user.id).finally(() => {
-            if (mountedRef.current) setLoading(false);
-          });
+          void loadUserData(session.user.id);
         } else {
           setLoading(false);
         }
@@ -216,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(newSession?.user ?? null);
 
           if (newSession?.user) {
+            setLoading(true);
             await loadUserData(newSession.user.id);
           } else {
             // Invalidate any in-flight profile/tenant requests after sign-out.
@@ -226,9 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRole(null);
             setIsOwner(false);
             setAuthError(null);
+            setLoading(false);
           }
-
-          if (mountedRef.current) setLoading(false);
         })();
       }
     );
