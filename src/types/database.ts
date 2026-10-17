@@ -344,6 +344,8 @@ export interface ProductUnit {
   name_ar: string | null;
   factor: number;
   barcode: string | null;
+  cost_price: number;
+  sale_price: number;
   is_base: boolean;
   is_purchase_unit: boolean;
   is_sale_unit: boolean;
@@ -401,6 +403,10 @@ export interface InvoiceLine {
   invoice_id: string;
   tenant_id: string;
   product_id: string | null;
+  unit_id: string | null;
+  unit_name_snapshot: string | null;
+  conversion_factor: number;
+  base_quantity: number;
   description: string | null;
   quantity: number;
   unit_price: number;
