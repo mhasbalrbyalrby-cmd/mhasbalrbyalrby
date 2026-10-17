@@ -56,9 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileError) throw profileError;
       if (!mountedRef.current) return;
 
-      setProfile(profileData as Profile | null);
-
       if (!profileData) {
+        setProfile(null);
         setTenant(null);
         setTenantMember(null);
         setRole(null);
@@ -67,7 +66,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!profileData.tenant_id) {
+      // Resolve the active tenant from the profile first. Some valid users,
+      // including system owners, have profile.tenant_id = NULL but do have
+      // an active tenant_members row. Resolve that relationship without
+      // writing anything to the database.
+      let resolvedTenantId: string | null = profileData.tenant_id ?? null;
+      let memberData: TenantMember | null = null;
+
+      if (resolvedTenantId) {
+        const { data, error: memberError } = await supabase
+          .from('tenant_members')
+          .select('*')
+          .eq('tenant_id', resolvedTenantId)
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (memberError) throw memberError;
+        memberData = data as TenantMember | null;
+      } else {
+        const { data, error: memberError } = await supabase
+          .from('tenant_members')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('is_primary', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (memberError) throw memberError;
+        memberData = data as TenantMember | null;
+        resolvedTenantId = memberData?.tenant_id ?? null;
+      }
+
+      if (!resolvedTenantId) {
+        setProfile(profileData as Profile);
         setTenant(null);
         setTenantMember(null);
         setRole(null);
@@ -76,29 +110,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Keep the effective tenant available to existing modules in memory.
+      // This does not update profiles.tenant_id in Supabase.
+      setProfile({ ...(profileData as Profile), tenant_id: resolvedTenantId });
+
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*')
-        .eq('id', profileData.tenant_id)
+        .eq('id', resolvedTenantId)
         .maybeSingle();
 
       if (tenantError) throw tenantError;
       if (!mountedRef.current) return;
 
       setTenant(tenantData as Tenant | null);
-
-      const { data: memberData, error: memberError } = await supabase
-        .from('tenant_members')
-        .select('*')
-        .eq('tenant_id', profileData.tenant_id)
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (memberError) throw memberError;
-      if (!mountedRef.current) return;
-
-      setTenantMember(memberData as TenantMember | null);
+      setTenantMember(memberData);
 
       const tenantIsOwner = (tenantData as Tenant | null)?.is_owner ?? false;
       setIsOwner(tenantIsOwner && !!memberData);
@@ -221,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const authReady = !authError && !!profile && !!profile.tenant_id && !!tenantMember;
+  const authReady = !authError && !!profile && !!tenant?.id && !!tenantMember;
 
   return (
     <AuthContext.Provider
