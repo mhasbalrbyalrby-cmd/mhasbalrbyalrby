@@ -146,6 +146,7 @@ export default function InventoryPage() {
       supabase.from('warehouses').select('*').eq('tenant_id', tid),
       supabase.from('units_of_measure').select('*').eq('tenant_id', tid),
       supabase.from('product_units').select('*').eq('tenant_id', tid),
+      supabase.from('stock_movements').select('*').eq('tenant_id', tid),
     ]);
     setProducts((p as Product[]) ?? []);
     setWarehouses((w as Warehouse[]) ?? []);
