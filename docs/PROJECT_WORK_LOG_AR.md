@@ -114,3 +114,7 @@
 - تمت مراجعة ملفات GitHub على الفرع وتأكيد وجود BarcodeDetector وFlashlight ووحدات product_units والجرد متعدد الوحدات. لم تُدمج التغييرات إلى main ولم يُطلب نشر Production.
 - لم تُطبّق المسودة 20261018130000_tenant_settings_currency_permissions.sql. يلزم اختبارها على قاعدة معزولة قبل تطبيقها على الإنتاج؛ لا يُعد تمكين تعديل مؤسسات المستأجرين العاديين أو تقييد العملات على مستوى قاعدة البيانات مكتملًا بعد.
 - لم يُنفّذ اختبارًا ميدانيًا فعليًا على جهاز Android للانتقال للخلفية، استعادة المسودة، أو فلاش الكاميرا. كما أن خطأ AuthRetryableFetchError الأصلي يتضمن فشل fetch؛ تغيير signOut إلى local يعالج الاعتماد على طلب logout العام، لكنه لا يثبت إصلاح أي مشكلة منفصلة في الشبكة أو token refresh.
+
+
+- متابعة أخيرة للدفعة نفسها: commit `cfddddb80a0f07b50d8de98b509d229e6bd4dd90` جعل فحص دعم الفلاش اختياريًا حتى لا يتعطل ماسح الباركود إذا لم ينجح استعلام قدرات الكاميرا. رابط الملف: https://github.com/mhasbalrbyalrby-cmd/mhasbalrbyalrby/blob/fix/tenant-settings-owner-roles-logout/src/pages/InventoryPage.tsx.
+- اكتمل بنجاح GitHub Actions run `39075003534` بعد تغييرات العملات وRPC ومسودة الصلاحيات، مع نجاح `npm run typecheck` و`npm run build`. يجري تشغيل فحص جديد للالتزام الأحدث بعد إصلاح فحص قدرات الفلاش.
