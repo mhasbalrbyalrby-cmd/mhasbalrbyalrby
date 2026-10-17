@@ -432,6 +432,7 @@ export interface Receipt {
   currency: string;
   exchange_rate: number;
   amount_base: number;
+  actual_receipt_date?: string | null;
   account_id: string | null;
   method: 'cash' | 'bank' | 'card' | 'transfer' | 'cheque';
   reference: string | null;
@@ -487,6 +488,12 @@ export interface ExchangeTransfer {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  exchange_rate?: number | null;
+  amount_base?: number | null;
+  cash_currency?: string | null;
+  commission_type?: 'fixed' | 'percentage' | null;
+  commission_bearer?: 'sender' | 'beneficiary' | null;
+  direction?: 'outgoing' | 'incoming' | null;
 }
 
 export interface AIMessage {
@@ -512,4 +519,97 @@ export interface BiometricLog {
   timestamp: string;
   status: string;
   created_at: string;
+}
+
+
+// Additional business-module row types used by the existing screens.
+export interface FixedAsset {
+  id: string;
+  tenant_id: string;
+  asset_name: string;
+  asset_name_ar: string | null;
+  asset_code: string | null;
+  category: string | null;
+  purchase_date: string | null;
+  purchase_cost: number;
+  salvage_value: number;
+  useful_life_years: number;
+  depreciation_method: string;
+  annual_depreciation: number | null;
+  accumulated_depreciation: number | null;
+  current_value: number;
+  status: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface Estate {
+  id: string;
+  tenant_id: string;
+  deceased_name: string;
+  date_of_death: string;
+  total_assets: number;
+  total_liabilities: number;
+  net_estate: number;
+  notes: string | null;
+  created_at: string | null;
+}
+
+export interface Heir {
+  id: string;
+  estate_id: string;
+  tenant_id: string;
+  heir_name: string;
+  relationship: string;
+  share_fraction: string;
+  calculated_amount: number;
+  is_distributed: boolean;
+  created_at: string | null;
+}
+
+export interface PartnerFamily {
+  id: string;
+  tenant_id: string;
+  person_name: string;
+  person_name_ar: string | null;
+  relationship: string | null;
+  gender: string | null;
+  birth_date: string | null;
+  national_id: string | null;
+  phone: string | null;
+  notes: string | null;
+  is_deceased: boolean;
+  date_of_death: string | null;
+  linked_estate_id: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ZakatRecord {
+  id: string;
+  tenant_id: string;
+  hijri_year: string;
+  nisab_date: string | null;
+  nisab_hijri: string | null;
+  haul_start: string | null;
+  haul_end: string | null;
+  cash_amount: number;
+  receivables_amount: number;
+  inventory_amount: number;
+  other_amount: number;
+  total_zakat_base: number;
+  zakat_rate: number;
+  zakat_due: number;
+  zakat_paid: number;
+  payment_date: string | null;
+  payment_method: string | null;
+  payment_reference: string | null;
+  notes: string | null;
+  status: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
