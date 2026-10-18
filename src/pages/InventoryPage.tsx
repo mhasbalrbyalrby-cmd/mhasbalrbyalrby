@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import BarcodeScanner from '@/components/BarcodeScanner';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +21,7 @@ export default function InventoryPage() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
@@ -161,11 +163,12 @@ export default function InventoryPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('common.edit') : lang === 'ar' ? 'صنف جديد' : 'New Item'}>
+        {scannerOpen && <div className="mb-4"><BarcodeScanner lang={lang} onDetected={(value) => { setForm((current) => ({ ...current, barcode: value })); setScannerOpen(false); }} onClose={() => setScannerOpen(false)} /></div>}
         {error && <div className="flex items-center gap-2 bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm rounded-lg px-3 py-2 mb-4"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكود' : 'Code'}</label><input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input-field font-mono" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><input type="text" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><div className="flex gap-2"><input type="text" inputMode="numeric" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field min-w-0" /><button type="button" onClick={() => setScannerOpen(true)} aria-label={lang === 'ar' ? 'فتح كاميرا قراءة الباركود' : 'Open barcode scanner camera'} className="btn-secondary !px-3 shrink-0" title={lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}><span aria-hidden="true">▦</span><span className="sr-only">{lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}</span></button></div></div>
           </div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.name')} *</label><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" required /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الاسم بالعربية' : 'Arabic Name'}</label><input type="text" value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} className="input-field" dir="rtl" /></div>
