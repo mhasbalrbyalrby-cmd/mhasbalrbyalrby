@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
 import Modal from '@/components/Modal';
 import {
-  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2,
+  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download,
 } from 'lucide-react';
 
 export default function InventoryPage() {
@@ -141,6 +141,36 @@ export default function InventoryPage() {
     if (!error) loadData();
   }
 
+  function exportProductsCsv() {
+    const headers = ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'unit', 'category'];
+    const rows = filtered.map((product) => [
+      product.code ?? '',
+      product.name,
+      product.name_ar ?? '',
+      product.type,
+      product.barcode ?? '',
+      product.cost_price,
+      product.sale_price,
+      product.min_stock,
+      units.find((unit) => unit.id === product.unit_id)?.name ?? '',
+      product.category ?? '',
+    ]);
+    const escapeCsv = (value: unknown) => {
+      const textValue = String(value ?? '');
+      return /[",\\r\\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
+    };
+    const csv = '\\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\\r\\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const filtered = products.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase()) || (p.name_ar ?? '').includes(search) || (p.code ?? '').includes(search) || (p.barcode ?? '').includes(search)
   );
@@ -157,7 +187,10 @@ export default function InventoryPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'المنتجات والمخازن والمخزون' : 'Products, warehouses, and stock'}</p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={exportProductsCsv} disabled={filtered.length === 0} className="btn-secondary flex items-center gap-2 disabled:opacity-50"><Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}</button>
+          <button type="button" onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
