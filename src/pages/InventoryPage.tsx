@@ -287,7 +287,7 @@ export default function InventoryPage() {
       </div>
 
       {importOpen && (
-        <Modal title={lang === 'ar' ? 'معاينة استيراد الأصناف CSV' : 'Preview CSV import'} onClose={() => setImportOpen(false)}>
+        <Modal open={importOpen} title={lang === 'ar' ? 'معاينة استيراد الأصناف CSV' : 'Preview CSV import'} onClose={() => setImportOpen(false)}>
           <div className="space-y-3">
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? `عدد الصفوف: ${importRows.length}. أسماء الأعمدة المطلوبة: name، ويمكن استخدام code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.` : `Rows: ${importRows.length}. Required column: name. Optional: code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.`}</p>
             {importErrors.length > 0 && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300"><strong>{lang === 'ar' ? `أخطاء التحقق (${importErrors.length})` : `Validation errors (${importErrors.length})`}</strong><ul className="list-disc ps-5 mt-2 max-h-40 overflow-auto">{importErrors.slice(0, 30).map((issue, i) => <li key={i}>{issue}</li>)}</ul></div>}
