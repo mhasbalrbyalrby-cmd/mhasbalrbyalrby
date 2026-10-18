@@ -11,6 +11,13 @@ import {
   CheckCircle2, XCircle, Eye, Download, Camera,
 } from 'lucide-react';
 
+function isValidEan13(value: string): boolean {
+  if (!/^\d{13}$/.test(value)) return false;
+  const digits = value.split('').map(Number);
+  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0);
+  return (10 - (checksum % 10)) % 10 === digits[12];
+}
+
 interface FormLine {
   product_id: string;
   description: string;
@@ -69,15 +76,17 @@ export default function InvoicesPage() {
     let frameId = 0;
     setScannerError('');
     setScannerStarting(true);
-    type DetectedBarcode = { rawValue: string };
+    type DetectedBarcode = { rawValue: string; format?: string };
     type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
     type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+    let candidateValue = '';
+    let candidateFrames = 0;
     async function startScanner() {
       try {
         const DetectorClass = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
         if (!DetectorClass) throw new Error(lang === 'ar' ? 'المتصفح لا يدعم قراءة الباركود بالكاميرا. يمكنك إدخال الباركود يدويًا.' : 'This browser does not support camera barcode scanning. You can enter the barcode manually.');
         if (!navigator.mediaDevices?.getUserMedia) throw new Error(lang === 'ar' ? 'الكاميرا تتطلب اتصال HTTPS وصلاحية الوصول إليها.' : 'Camera access requires HTTPS and camera permission.');
-        const detector = new DetectorClass({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'] });
+        const detector = new DetectorClass({ formats: ['ean_13', 'code_128'] });
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
         if (!active) { stream.getTracks().forEach((track) => track.stop()); return; }
         const video = videoRef.current;
@@ -90,7 +99,16 @@ export default function InvoicesPage() {
           try {
             if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
               const codes = await detector.detect(video);
-              const code = codes.find((item) => item.rawValue.trim())?.rawValue.trim();
+              const detected = codes.find((item) => {
+                const value = item.rawValue.trim();
+                if (!value) return false;
+                if (item.format === 'ean_13') return isValidEan13(value);
+                return item.format === 'code_128';
+              });
+              const detectedValue = detected?.rawValue.trim() ?? '';
+              if (detectedValue && detectedValue === candidateValue) candidateFrames += 1;
+              else { candidateValue = detectedValue; candidateFrames = detectedValue ? 1 : 0; }
+              const code = candidateFrames >= 3 ? detectedValue : '';
               if (code) {
                 const matchedUnit = productUnits.find((unit) => (unit.barcode ?? '').trim() === code);
                 const product = matchedUnit ? products.find((item) => item.id === matchedUnit.product_id) : products.find((item) => (item.barcode ?? '').trim() === code);
