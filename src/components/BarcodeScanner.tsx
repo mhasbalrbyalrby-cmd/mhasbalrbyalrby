@@ -39,6 +39,11 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
   const lastValueRef = useRef('');
   const matchCountRef = useRef(0);
   const lastAcceptedAtRef = useRef(0);
+  const onDetectedRef = useRef(onDetected);
+
+  useEffect(() => {
+    onDetectedRef.current = onDetected;
+  }, [onDetected]);
   const [error, setError] = useState('');
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
@@ -110,7 +115,7 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
           const now = Date.now();
           if (matchCountRef.current >= 2 && now - lastAcceptedAtRef.current >= 1200) {
             lastAcceptedAtRef.current = now;
-            onDetected(match.rawValue);
+            onDetectedRef.current(match.rawValue);
             return;
           }
         } else {
@@ -130,7 +135,7 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
       streamRef.current?.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     };
-  }, [ar, onDetected]);
+  }, [ar]);
 
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0];
