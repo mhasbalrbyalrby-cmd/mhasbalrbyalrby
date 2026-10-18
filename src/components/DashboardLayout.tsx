@@ -73,7 +73,38 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
     return () => { cancelled = true; };
   }, [profile?.tenant_id]);
 
-  const roleName = role?.name ?? (isOwner ? 'owner' : 'employee');
+  // Resolve roles from stable English keys or localized database labels.
+  // The verified system owner must never fall back to the employee navigation.
+  const roleAliases: Record<string, string> = {
+    owner: 'owner',
+    مالك: 'owner',
+    'مالك النظام': 'owner',
+    admin: 'admin',
+    administrator: 'admin',
+    مدير: 'admin',
+    accountant: 'accountant',
+    محاسب: 'accountant',
+    manager: 'manager',
+    sales: 'sales',
+    مبيعات: 'sales',
+    purchasing: 'purchasing',
+    مشتريات: 'purchasing',
+    warehouse: 'warehouse',
+    مخازن: 'warehouse',
+    cashier: 'cashier',
+    'أمين صندوق': 'cashier',
+    exchange_agent: 'exchange_agent',
+    صراف: 'exchange_agent',
+    auditor: 'auditor',
+    مدقق: 'auditor',
+    employee: 'employee',
+    موظف: 'employee',
+  };
+  const roleName = isOwner
+    ? 'owner'
+    : roleAliases[role?.name?.trim().toLowerCase() ?? '']
+      ?? roleAliases[role?.name_ar?.trim().toLowerCase() ?? '']
+      ?? 'employee';
 
   const roleModules: Record<string, string[]> = {
     owner: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'inventory', 'exchange', 'reports', 'shifts', 'zakat', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help', 'owner', 'memory'],
