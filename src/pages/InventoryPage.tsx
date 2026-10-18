@@ -4,9 +4,10 @@ import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
+import { parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import {
-  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download,
+  Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload,
 } from 'lucide-react';
 
 export default function InventoryPage() {
@@ -26,6 +27,10 @@ export default function InventoryPage() {
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitNameAr, setNewUnitNameAr] = useState('');
   const [savingUnit, setSavingUnit] = useState(false);
+  const [importRows, setImportRows] = useState<CSVRow[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
@@ -141,6 +146,79 @@ export default function InventoryPage() {
     if (!error) loadData();
   }
 
+  async function handleCsvFile(file?: File) {
+    if (!file) return;
+    setError('');
+    setImportErrors([]);
+    try {
+      const text = (await file.text()).replace(/^\\uFEFF/, '');
+      const rows = parseCSV(text, ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'unit', 'category']);
+      if (!rows.length) throw new Error(lang === 'ar' ? 'الملف فارغ أو لا يحتوي صفوف بيانات.' : 'The file is empty or contains no data rows.');
+      const errors: string[] = [];
+      const codes = new Set<string>();
+      const barcodes = new Set<string>();
+      rows.forEach((row, index) => {
+        const line = index + 2;
+        if (!row.name?.trim()) errors.push(`سطر ${line}: الاسم مطلوب / Row ${line}: name is required`);
+        if (row.type && !['product', 'service'].includes(row.type.trim().toLowerCase())) errors.push(`سطر ${line}: النوع يجب أن يكون product أو service / invalid type`);
+        for (const field of ['cost_price', 'sale_price', 'min_stock']) {
+          if (row[field]?.trim() && (!Number.isFinite(Number(row[field])) || Number(row[field]) < 0)) errors.push(`سطر ${line}: قيمة غير صحيحة في ${field}`);
+        }
+        const code = row.code?.trim().toLowerCase();
+        if (code && codes.has(code)) errors.push(`سطر ${line}: كود مكرر داخل الملف: ${row.code}`);
+        if (code) codes.add(code);
+        const barcode = row.barcode?.trim();
+        if (barcode && barcodes.has(barcode)) errors.push(`سطر ${line}: باركود مكرر داخل الملف: ${barcode}`);
+        if (barcode) barcodes.add(barcode);
+      });
+      const existingCodes = new Set(products.map((p) => (p.code ?? '').toLowerCase()).filter(Boolean));
+      const existingBarcodes = new Set(products.map((p) => p.barcode ?? '').filter(Boolean));
+      rows.forEach((row, index) => {
+        if (row.code?.trim() && existingCodes.has(row.code.trim().toLowerCase())) errors.push(`سطر ${index + 2}: الكود موجود مسبقاً: ${row.code}`);
+        if (row.barcode?.trim() && existingBarcodes.has(row.barcode.trim())) errors.push(`سطر ${index + 2}: الباركود موجود مسبقاً: ${row.barcode}`);
+      });
+      setImportRows(rows);
+      setImportErrors(errors);
+      setImportOpen(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : (lang === 'ar' ? 'تعذرت قراءة ملف CSV.' : 'Could not read the CSV file.'));
+    }
+  }
+
+  async function confirmCsvImport() {
+    if (!tenant?.id || importErrors.length || !importRows.length) return;
+    setImporting(true);
+    setError('');
+    try {
+      const unitByName = new Map(units.map((unit) => [unit.name.toLowerCase(), unit.id]));
+      const payload = importRows.map((row) => ({
+        tenant_id: tenant.id,
+        code: row.code?.trim() || null,
+        name: row.name.trim(),
+        name_ar: row.name_ar?.trim() || null,
+        type: (row.type?.trim().toLowerCase() === 'service' ? 'service' : 'product') as 'product' | 'service',
+        barcode: row.barcode?.trim() || null,
+        cost_price: Number(row.cost_price || 0),
+        sale_price: Number(row.sale_price || 0),
+        min_stock: Number(row.min_stock || 0),
+        unit_id: unitByName.get((row.unit ?? '').trim().toLowerCase()) ?? null,
+        category: row.category?.trim() || null,
+        is_active: true,
+        created_by: profile?.id ?? null,
+      }));
+      const { error: insertError } = await supabase.from('products').insert(payload);
+      if (insertError) throw insertError;
+      setImportOpen(false);
+      setImportRows([]);
+      setImportErrors([]);
+      await loadData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : (lang === 'ar' ? 'فشل استيراد الأصناف.' : 'Failed to import products.'));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function exportProductsCsv() {
     const headers = ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'unit', 'category'];
     const rows = filtered.map((product) => [
@@ -189,6 +267,7 @@ export default function InventoryPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={exportProductsCsv} disabled={filtered.length === 0} className="btn-secondary flex items-center gap-2 disabled:opacity-50"><Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}</button>
+          <label className="btn-secondary flex items-center gap-2 cursor-pointer"><Upload className="w-4 h-4" />{lang === 'ar' ? 'استيراد CSV' : 'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { void handleCsvFile(e.target.files?.[0]); e.currentTarget.value = ''; }} /></label>
           <button type="button" onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
         </div>
       </div>
@@ -206,6 +285,17 @@ export default function InventoryPage() {
         <div className="card"><div className="text-2xl font-bold text-secondary-500">{products.filter((p) => p.type === 'service').length}</div><div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'خدمات' : 'Services'}</div></div>
         <div className="card"><div className="text-2xl font-bold text-accent-500">{warehouses.length}</div><div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'مخازن' : 'Warehouses'}</div></div>
       </div>
+
+      {importOpen && (
+        <Modal title={lang === 'ar' ? 'معاينة استيراد الأصناف CSV' : 'Preview CSV import'} onClose={() => setImportOpen(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? `عدد الصفوف: ${importRows.length}. أسماء الأعمدة المطلوبة: name، ويمكن استخدام code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.` : `Rows: ${importRows.length}. Required column: name. Optional: code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.`}</p>
+            {importErrors.length > 0 && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300"><strong>{lang === 'ar' ? `أخطاء التحقق (${importErrors.length})` : `Validation errors (${importErrors.length})`}</strong><ul className="list-disc ps-5 mt-2 max-h-40 overflow-auto">{importErrors.slice(0, 30).map((issue, i) => <li key={i}>{issue}</li>)}</ul></div>}
+            <div className="overflow-x-auto max-h-56 border border-[var(--color-border)] rounded-lg"><table className="w-full text-xs"><thead><tr>{['code','name','type','barcode','cost_price','sale_price'].map((h) => <th key={h} className="p-2 text-start">{h}</th>)}</tr></thead><tbody>{importRows.slice(0, 8).map((row, i) => <tr key={i} className="border-t border-[var(--color-border)]">{['code','name','type','barcode','cost_price','sale_price'].map((h) => <td key={h} className="p-2">{row[h] ?? ''}</td>)}</tr>)}</tbody></table></div>
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setImportOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={() => void confirmCsvImport()} disabled={importing || importErrors.length > 0 || importRows.length === 0} className="btn-primary">{importing ? (lang === 'ar' ? 'جارٍ الاستيراد…' : 'Importing…') : (lang === 'ar' ? 'تأكيد الاستيراد' : 'Confirm import')}</button></div>
+          </div>
+        </Modal>
+      )}
 
       {filtered.length === 0 ? (
         <div className="card text-center py-12 text-[var(--color-text-muted)]">{t('common.no_data')}</div>
