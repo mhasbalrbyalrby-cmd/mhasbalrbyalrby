@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, FileText, Receipt, Calculator,
   Package, ArrowLeftRight, BarChart3, Clock, Settings,
   Shield, BookOpen, Brain, Menu, X, Sun, Moon, Contrast, Globe,
-  LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building,
+  LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building, AlertCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -51,6 +51,8 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [enabledAddons, setEnabledAddons] = useState<Set<string>>(new Set());
+  const [logoutError, setLogoutError] = useState('');
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => {
     if (!profile?.tenant_id) return;
@@ -160,22 +162,22 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
       </aside>
 
       {/* Main content */}
-      <div className={`lg:${lang === 'ar' ? 'mr' : 'ml'}-64`}>
+      <div className={lang === 'ar' ? 'lg:mr-64 min-w-0 min-h-screen' : 'lg:ml-64 min-w-0 min-h-screen'}>
         {/* Top bar */}
-        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden btn-secondary !p-2"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="font-semibold text-[var(--color-text)]">
+            <h2 className="font-semibold text-[var(--color-text)] truncate min-w-0">
               {activeItem ? t(activeItem.labelKey) : ''}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0">
             {/* Language toggle */}
             <button
               onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
@@ -231,15 +233,26 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
                         </div>
                       )}
                     </div>
+                    {logoutError && <div role="alert" className="mx-2 mb-2 flex gap-2 text-xs text-error-600 dark:text-error-400"><AlertCircle className="w-4 h-4 shrink-0" /><span>{logoutError}</span></div>}
                     <button
-                      onClick={() => {
-                        signOut();
-                        setUserMenuOpen(false);
+                      disabled={logoutBusy}
+                      onClick={async () => {
+                        setLogoutBusy(true);
+                        setLogoutError('');
+                        try {
+                          await signOut();
+                          setUserMenuOpen(false);
+                        } catch (error) {
+                          console.error('[DashboardLayout] Sign-out failed:', error instanceof Error ? error.message : 'Unknown error');
+                          setLogoutError(lang === 'ar' ? 'تعذر إنهاء الجلسة محليًا. تحقق من إعدادات المتصفح ثم أعد المحاولة.' : 'Could not clear the local session. Check browser settings and retry.');
+                        } finally {
+                          setLogoutBusy(false);
+                        }
                       }}
-                      className="nav-item w-full text-error-600 dark:text-error-400"
+                      className="nav-item w-full text-error-600 dark:text-error-400 disabled:opacity-50"
                     >
                       <LogOut className="w-4 h-4" />
-                      <span>{t('auth.logout')}</span>
+                      <span>{logoutBusy ? (lang === 'ar' ? 'جارٍ الخروج…' : 'Signing out…') : t('auth.logout')}</span>
                     </button>
                   </div>
                 </>

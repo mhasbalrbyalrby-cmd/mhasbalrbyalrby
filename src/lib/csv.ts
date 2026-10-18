@@ -31,47 +31,50 @@ export interface CSVRow {
   [key: string]: string;
 }
 
-export function parseCSV(text: string, expectedHeaders: string[]): CSVRow[] {
-  const lines = text.split('\n').filter((l) => l.trim());
-  if (lines.length < 2) return [];
+export function parseCSV(text: string, expectedHeaders: string[] = []): CSVRow[] {
+  const source = text.replace(/^\uFEFF/, '');
+  const records: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
 
-  const headers = parseCSVLine(lines[0]);
-  const rows: CSVRow[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    const row: CSVRow = {};
-    headers.forEach((h, idx) => {
-      const key = expectedHeaders.find((eh) => eh.toLowerCase() === h.toLowerCase().trim()) ?? h;
-      row[key] = values[idx] ?? '';
-    });
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (char === '"' && quoted && source[i + 1] === '"') {
+      cell += '"';
+      i++;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      row.push(cell);
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && source[i + 1] === '\n') i++;
+      row.push(cell);
+      if (row.some((value) => value.trim() !== '')) records.push(row);
+      row = [];
+      cell = '';
     } else {
-      current += char;
+      cell += char;
     }
   }
-  result.push(current);
-  return result;
+
+  if (cell.length || row.length) {
+    row.push(cell);
+    if (row.some((value) => value.trim() !== '')) records.push(row);
+  }
+  if (records.length < 2) return [];
+
+  const headers = records[0].map((header) => header.trim().replace(/^\uFEFF/, ''));
+  const normalizedExpected = expectedHeaders.map((header) => header.toLowerCase());
+  return records.slice(1).map((values) => {
+    const result: CSVRow = {};
+    headers.forEach((header, index) => {
+      const normalized = header.toLowerCase();
+      const canonical = expectedHeaders.find((candidate) => candidate.toLowerCase() === normalized);
+      const key = canonical ?? (normalizedExpected.includes(normalized) ? expectedHeaders[normalizedExpected.indexOf(normalized)] : header);
+      result[key] = (values[index] ?? '').trim();
+    });
+    return result;
+  });
 }

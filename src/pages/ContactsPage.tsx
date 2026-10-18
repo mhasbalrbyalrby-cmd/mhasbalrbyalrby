@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import type { Party, PartyRole, PartyRoleType } from './database';
+import type { Party, PartyRole, PartyRoleType } from '../types/database';
 import Modal from '../components/Modal';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2,
@@ -21,6 +21,7 @@ export default function ContactsPage() {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadRequestId = useRef(0);
 
   const [form, setForm] = useState({
     name: '',
@@ -32,43 +33,66 @@ export default function ContactsPage() {
     city: '',
     id_number: '',
     notes: '',
-    roles: { customer: false, supplier: false, employee: false, agent: false } as Record<PartyRoleType, boolean>,
+    roles: { customer: false, supplier: false, employee: false, agent: false, other: false },
   });
 
   useEffect(() => {
-    loadParties();
-  }, []);
+    void loadParties();
+    // The page may mount before authentication finishes loading the profile.
+  }, [profile?.tenant_id]);
 
   async function loadParties() {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     const tenantId = profile?.tenant_id;
-    if (!tenantId) { setLoading(false); return; }
+    if (!tenantId) {
+      setParties([]);
+      setPartyRoles({});
+      setError('');
+      setLoading(false);
+      return;
+    }
 
-    const { data, error } = await supabase
-      .from('parties')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+    try {
+      setError('');
+      const { data, error: partiesError } = await supabase
+        .from('parties')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      const partyList = data as Party[];
-      setParties(partyList);
+      if (requestId !== loadRequestId.current) return;
+      if (partiesError) throw partiesError;
 
-      const { data: rolesData } = await supabase
-        .from('party_roles')
-        .select('*')
-        .in('party_id', partyList.map((p) => p.id));
+      const partyList = (data ?? []) as Party[];
+      setParties(partyList);
 
-      if (rolesData) {
-        const rolesMap: Record<string, PartyRole[]> = {};
-        (rolesData as PartyRole[]).forEach((r) => {
-          if (!rolesMap[r.party_id]) rolesMap[r.party_id] = [];
-          rolesMap[r.party_id].push(r);
-        });
-        setPartyRoles(rolesMap);
-      }
-    }
-    setLoading(false);
+      if (partyList.length === 0) {
+        setPartyRoles({});
+        return;
+      }
+
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('party_roles')
+        .select('*')
+        .in('party_id', partyList.map((party) => party.id));
+
+      if (requestId !== loadRequestId.current) return;
+      if (rolesError) throw rolesError;
+
+      const rolesMap: Record<string, PartyRole[]> = {};
+      ((rolesData ?? []) as PartyRole[]).forEach((role) => {
+        if (!rolesMap[role.party_id]) rolesMap[role.party_id] = [];
+        rolesMap[role.party_id].push(role);
+      });
+      setPartyRoles(rolesMap);
+    } catch (err) {
+      if (requestId === loadRequestId.current) {
+        setError(err instanceof Error ? err.message : t('error.generic'));
+      }
+    } finally {
+      if (requestId === loadRequestId.current) setLoading(false);
+    }
   }
 
   function openCreate() {
@@ -264,6 +288,7 @@ export default function ContactsPage() {
           <option value="supplier">{lang === 'ar' ? 'موردون' : 'Suppliers'}</option>
           <option value="employee">{lang === 'ar' ? 'موظفون' : 'Employees'}</option>
           <option value="agent">{lang === 'ar' ? 'وكلاء' : 'Agents'}</option>
+          <option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option>
         </select>
       </div>
 

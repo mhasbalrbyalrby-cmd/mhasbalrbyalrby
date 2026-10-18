@@ -1,15 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus, Product, Warehouse, Shift } from '@/types/database';
+import type { Invoice, Party, InvoiceLine, InvoiceType, InvoiceStatus, Product, ProductUnit, UnitOfMeasure, Warehouse, Shift } from '@/types/database';
 import { exportToCSV } from '@/lib/csv';
 import { formatDualDate } from '@/lib/hijri';
 import Modal from '@/components/Modal';
 import {
   FileText, Plus, Search, Pencil, Trash2, Loader2, AlertCircle,
-  CheckCircle2, XCircle, Eye, Download,
+  CheckCircle2, XCircle, Eye, Download, Camera,
 } from 'lucide-react';
+
+function isValidEan13(value: string): boolean {
+  if (!/^\d{13}$/.test(value)) return false;
+  const digits = value.split('').map(Number);
+  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0);
+  return (10 - (checksum % 10)) % 10 === digits[12];
+}
 
 interface FormLine {
   product_id: string;
@@ -17,6 +24,9 @@ interface FormLine {
   quantity: number;
   unit_price: number;
   discount_amount: number;
+  unit_id: string;
+  unit_name_snapshot: string;
+  conversion_factor: number;
 }
 
 export default function InvoicesPage() {
@@ -25,6 +35,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productUnits, setProductUnits] = useState<ProductUnit[]>([]);
+  const [baseUnits, setBaseUnits] = useState<UnitOfMeasure[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +47,12 @@ export default function InvoicesPage() {
   const [viewLines, setViewLines] = useState<InvoiceLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerStarting, setScannerStarting] = useState(false);
+  const [manualBarcode, setManualBarcode] = useState('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [form, setForm] = useState({
     type: 'sale' as InvoiceType,
@@ -46,30 +64,144 @@ export default function InvoicesPage() {
     warehouse_id: '',
     shift_id: '',
     discount_amount: 0,
-    lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] as FormLine[],
+    lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }] as FormLine[],
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { void loadData(); }, [profile?.tenant_id]);
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+    let active = true;
+    let stream: MediaStream | null = null;
+    let frameId = 0;
+    setScannerError('');
+    setScannerStarting(true);
+    type DetectedBarcode = { rawValue: string; format?: string };
+    type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
+    type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+    let candidateValue = '';
+    let candidateFrames = 0;
+    async function startScanner() {
+      try {
+        const DetectorClass = (window as unknown as { BarcodeDetector?: DetectorConstructor }).BarcodeDetector;
+        if (!DetectorClass) throw new Error(lang === 'ar' ? 'المتصفح لا يدعم قراءة الباركود بالكاميرا. يمكنك إدخال الباركود يدويًا.' : 'This browser does not support camera barcode scanning. You can enter the barcode manually.');
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error(lang === 'ar' ? 'الكاميرا تتطلب اتصال HTTPS وصلاحية الوصول إليها.' : 'Camera access requires HTTPS and camera permission.');
+        const detector = new DetectorClass({ formats: ['ean_13', 'code_128'] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        if (!active) { stream.getTracks().forEach((track) => track.stop()); return; }
+        const video = videoRef.current;
+        if (!video) throw new Error(lang === 'ar' ? 'تعذر تشغيل معاينة الكاميرا.' : 'Could not initialize camera preview.');
+        video.srcObject = stream;
+        await video.play();
+        setScannerStarting(false);
+        const scanFrame = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+              const codes = await detector.detect(video);
+              const detected = codes.find((item) => {
+                const value = item.rawValue.trim();
+                if (!value) return false;
+                if (item.format === 'ean_13') return isValidEan13(value);
+                return item.format === 'code_128';
+              });
+              const detectedValue = detected?.rawValue.trim() ?? '';
+              if (detectedValue && detectedValue === candidateValue) candidateFrames += 1;
+              else { candidateValue = detectedValue; candidateFrames = detectedValue ? 1 : 0; }
+              const code = candidateFrames >= 3 ? detectedValue : '';
+              if (code) {
+                const matchedUnit = productUnits.find((unit) => (unit.barcode ?? '').trim() === code);
+                const product = matchedUnit ? products.find((item) => item.id === matchedUnit.product_id) : products.find((item) => (item.barcode ?? '').trim() === code);
+                if (!product) setError((lang === 'ar' ? 'لم يتم العثور على صنف يحمل الباركود: ' : 'No product found for barcode: ') + code);
+                else setForm((current) => {
+                  const selectedUnitId = matchedUnit?.id ?? '';
+                  const existing = current.lines.findIndex((line) => line.product_id === product.id && line.unit_id === selectedUnitId);
+                  if (existing >= 0) {
+                    const lines = [...current.lines];
+                    lines[existing] = { ...lines[existing], quantity: (Number(lines[existing].quantity) || 0) + 1 };
+                    return { ...current, lines };
+                  }
+                  const blankIndex = current.lines.findIndex((line) => !line.product_id && !line.description.trim());
+                  const newLine: FormLine = {
+                    product_id: product.id,
+                    description: lang === 'ar' ? product.name_ar ?? product.name : product.name,
+                    quantity: 1,
+                    unit_price: matchedUnit ? ((current.type === 'sale' || current.type === 'return_sale') ? Number(matchedUnit.sale_price) : Number(matchedUnit.cost_price)) : (current.type === 'sale' || current.type === 'return_sale' ? product.sale_price : product.cost_price),
+                    discount_amount: 0,
+                    unit_id: matchedUnit?.id ?? '',
+                    unit_name_snapshot: matchedUnit ? (lang === 'ar' ? matchedUnit.name_ar ?? matchedUnit.name : matchedUnit.name) : (() => { const baseUnit = baseUnits.find((unit) => unit.id === product.unit_id); return baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit'); })(),
+                    conversion_factor: Number(matchedUnit?.factor ?? 1),
+                  };
+                  if (blankIndex >= 0) { const lines = [...current.lines]; lines[blankIndex] = newLine; return { ...current, lines }; }
+                  return { ...current, lines: [...current.lines, newLine] };
+                });
+                setScannerOpen(false);
+                return;
+              }
+            }
+          } catch { /* Continue scanning after transient frame errors. */ }
+          if (active) frameId = window.requestAnimationFrame(scanFrame);
+        };
+        frameId = window.requestAnimationFrame(scanFrame);
+      } catch (err) {
+        setScannerStarting(false);
+        setScannerError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تشغيل ماسح الباركود.' : 'Could not start barcode scanner.'));
+      }
+    }
+    void startScanner();
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frameId);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scannerOpen, lang, products, productUnits, baseUnits]);
+
 
   async function loadData() {
     setLoading(true);
+    setLoadError('');
     const tenantId = profile?.tenant_id;
-    if (!tenantId) { setLoading(false); return; }
+    if (!tenantId) {
+      setInvoices([]);
+      setParties([]);
+      setProducts([]);
+      setProductUnits([]);
+      setBaseUnits([]);
+      setWarehouses([]);
+      setShifts([]);
+      setLoading(false);
+      if (profile) setLoadError(lang === 'ar' ? 'حسابك غير مرتبط بمؤسسة؛ تعذر تحميل الفواتير.' : 'Your account is not linked to a tenant; invoices cannot be loaded.');
+      return;
+    }
 
-    const [{ data: invData }, { data: partyData }, { data: prodData }, { data: whData }, { data: shiftData }] = await Promise.all([
-      supabase.from('invoices').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
-      supabase.from('parties').select('*').eq('tenant_id', tenantId),
-      supabase.from('products').select('*').eq('tenant_id', tenantId).eq('is_active', true),
-      supabase.from('warehouses').select('*').eq('tenant_id', tenantId).eq('is_active', true),
-      supabase.from('shifts').select('*').eq('tenant_id', tenantId).eq('status', 'open').order('start_time', { ascending: false }),
-    ]);
-
-    setInvoices((invData as Invoice[]) ?? []);
-    setParties((partyData as Party[]) ?? []);
-    setProducts((prodData as Product[]) ?? []);
-    setWarehouses((whData as Warehouse[]) ?? []);
-    setShifts((shiftData as Shift[]) ?? []);
-    setLoading(false);
+    try {
+      const results = await Promise.all([
+        supabase.from('invoices').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
+        supabase.from('parties').select('*').eq('tenant_id', tenantId),
+        supabase.from('products').select('*').eq('tenant_id', tenantId).eq('is_active', true),
+        supabase.from('product_units').select('*').eq('tenant_id', tenantId),
+        supabase.from('units_of_measure').select('*').eq('tenant_id', tenantId),
+        supabase.from('warehouses').select('*').eq('tenant_id', tenantId).eq('is_active', true),
+        supabase.from('shifts').select('*').eq('tenant_id', tenantId).eq('status', 'open').order('start_time', { ascending: false }),
+      ]);
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+      const [invResult, partyResult, prodResult, unitsResult, baseUnitsResult, whResult, shiftResult] = results;
+      setInvoices((invResult.data as Invoice[]) ?? []);
+      setParties((partyResult.data as Party[]) ?? []);
+      setProducts((prodResult.data as Product[]) ?? []);
+      setProductUnits((unitsResult.data as ProductUnit[]) ?? []);
+      setBaseUnits((baseUnitsResult.data as UnitOfMeasure[]) ?? []);
+      setWarehouses((whResult.data as Warehouse[]) ?? []);
+      setShifts((shiftResult.data as Shift[]) ?? []);
+    } catch (err) {
+      console.error('[InvoicesPage] Failed to load invoice data:', err);
+      setInvoices([]);
+      setLoadError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تحميل بيانات الفواتير.' : 'Could not load invoice data.'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openCreate() {
@@ -83,14 +215,27 @@ export default function InvoicesPage() {
       warehouse_id: '',
       shift_id: '',
       discount_amount: 0,
-      lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }],
+      lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }],
     });
     setError('');
     setModalOpen(true);
   }
 
+  function changeInvoiceType(nextType: InvoiceType) {
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      lines: current.lines.map((line) => {
+        const product = products.find((item) => item.id === line.product_id);
+        const unit = productUnits.find((item) => item.id === line.unit_id);
+        const isSale = nextType === 'sale' || nextType === 'return_sale';
+        return { ...line, unit_price: unit ? Number(isSale ? unit.sale_price : unit.cost_price) : product ? (isSale ? product.sale_price : product.cost_price) : line.unit_price };
+      }),
+    }));
+  }
+
   function addLine() {
-    setForm({ ...form, lines: [...form.lines, { product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] });
+    setForm({ ...form, lines: [...form.lines, { product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0, unit_id: '', unit_name_snapshot: '', conversion_factor: 1 }] });
   }
 
   function updateLine(idx: number, field: keyof FormLine, value: string | number) {
@@ -101,8 +246,28 @@ export default function InvoicesPage() {
       if (prod) {
         newLines[idx].description = lang === 'ar' ? prod.name_ar ?? prod.name : prod.name;
         newLines[idx].unit_price = form.type === 'sale' || form.type === 'return_sale' ? prod.sale_price : prod.cost_price;
+        newLines[idx].unit_id = '';
+        newLines[idx].conversion_factor = 1;
+        const baseUnit = baseUnits.find((unit) => unit.id === prod.unit_id);
+        newLines[idx].unit_name_snapshot = baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit');
       }
     }
+    setForm({ ...form, lines: newLines });
+  }
+
+  function updateLineUnit(idx: number, unitId: string) {
+    const line = form.lines[idx];
+    const selectedUnit = productUnits.find((unit) => unit.id === unitId);
+    const product = products.find((item) => item.id === line.product_id);
+    const baseUnit = product ? baseUnits.find((unit) => unit.id === product.unit_id) : undefined;
+    const newLines = [...form.lines];
+    newLines[idx] = {
+      ...line,
+      unit_id: selectedUnit?.id ?? '',
+      conversion_factor: Number(selectedUnit?.factor ?? 1),
+      unit_name_snapshot: selectedUnit ? (lang === 'ar' ? selectedUnit.name_ar ?? selectedUnit.name : selectedUnit.name) : baseUnit ? (lang === 'ar' ? baseUnit.name_ar ?? baseUnit.name : baseUnit.name) : (lang === 'ar' ? 'وحدة أساسية' : 'Base unit'),
+      unit_price: selectedUnit ? ((form.type === 'sale' || form.type === 'return_sale') ? Number(selectedUnit.sale_price) : Number(selectedUnit.cost_price)) : product ? ((form.type === 'sale' || form.type === 'return_sale') ? product.sale_price : product.cost_price) : line.unit_price,
+    };
     setForm({ ...form, lines: newLines });
   }
 
@@ -165,6 +330,10 @@ export default function InvoicesPage() {
         invoice_id: invId,
         tenant_id: profile.tenant_id,
         product_id: l.product_id || null,
+        unit_id: l.unit_id || null,
+        unit_name_snapshot: l.unit_name_snapshot || null,
+        conversion_factor: Number(l.conversion_factor) > 0 ? Number(l.conversion_factor) : 1,
+        base_quantity: (Number(l.quantity) || 1) * (Number(l.conversion_factor) > 0 ? Number(l.conversion_factor) : 1),
         description: l.description || null,
         quantity: Number(l.quantity) || 1,
         unit_price: Number(l.unit_price) || 0,
@@ -267,6 +436,14 @@ export default function InvoicesPage() {
         </select>
       </div>
 
+      {loadError && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-error-300 bg-error-50 dark:bg-error-900/20 px-4 py-3 text-sm text-error-700 dark:text-error-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div><p className="font-semibold">{lang === 'ar' ? 'تعذر تحميل الفواتير' : 'Could not load invoices'}</p><p>{loadError}</p></div>
+          <button onClick={() => void loadData()} className="ms-auto underline">{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</button>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="card text-center py-12 text-[var(--color-text-muted)]">{t('common.no_data')}</div>
       ) : (
@@ -324,7 +501,7 @@ export default function InvoicesPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'النوع' : 'Type'}</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as InvoiceType })} className="input-field">
+              <select value={form.type} onChange={(e) => changeInvoiceType(e.target.value as InvoiceType)} className="input-field">
                 <option value="sale">{lang === 'ar' ? 'مبيعات' : 'Sale'}</option>
                 <option value="purchase">{lang === 'ar' ? 'مشتريات' : 'Purchase'}</option>
                 <option value="return_sale">{lang === 'ar' ? 'مرتجع مبيعات' : 'Return Sale'}</option>
@@ -368,19 +545,26 @@ export default function InvoicesPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--color-text-muted)]">{lang === 'ar' ? 'سطور الفاتورة' : 'Invoice Lines'}</span>
-              <button onClick={addLine} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'سطر' : 'Line'}</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setError(''); setScannerError(''); setScannerOpen(true); }} className="btn-secondary text-sm flex items-center gap-1"><Camera className="w-3.5 h-3.5" />{lang === 'ar' ? 'مسح باركود' : 'Scan barcode'}</button>
+                <button onClick={addLine} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'سطر' : 'Line'}</button>
+              </div>
             </div>
             {form.lines.map((line, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center mb-2">
                 <select
                   value={line.product_id}
                   onChange={(e) => updateLine(idx, 'product_id', e.target.value)}
-                  className="input-field col-span-3 !text-xs"
+                  className="input-field col-span-2 !text-xs"
                 >
                   <option value="">{lang === 'ar' ? 'منتج/خدمة/يدوي' : 'Product/Service/Manual'}</option>
                   {products.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}{p.type === 'service' ? (lang === 'ar' ? ' (خدمة)' : ' (service)') : ''}</option>)}
                 </select>
-                <input type="text" placeholder={lang === 'ar' ? 'الوصف' : 'Description'} value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} className="input-field col-span-3" />
+                <input type="text" placeholder={lang === 'ar' ? 'الوصف' : 'Description'} value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} className="input-field col-span-2" />
+                <select value={line.unit_id} onChange={(e) => updateLineUnit(idx, e.target.value)} className="input-field col-span-2 !text-xs" aria-label={lang === 'ar' ? 'وحدة الفاتورة' : 'Invoice unit'}>
+                  <option value="">{lang === 'ar' ? 'الوحدة الأساسية' : 'Base unit'}</option>
+                  {productUnits.filter((unit) => unit.product_id === line.product_id && ((form.type === 'sale' || form.type === 'return_sale') ? unit.is_sale_unit : unit.is_purchase_unit)).map((unit) => <option key={unit.id} value={unit.id}>{lang === 'ar' ? unit.name_ar ?? unit.name : unit.name}</option>)}
+                </select>
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'كمية' : 'Qty'} value={line.quantity || ''} onChange={(e) => updateLine(idx, 'quantity', e.target.value)} className="input-field col-span-1" />
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'سعر' : 'Price'} value={line.unit_price || ''} onChange={(e) => updateLine(idx, 'unit_price', e.target.value)} className="input-field col-span-2" />
                 <input type="number" step="0.01" placeholder={lang === 'ar' ? 'خصم' : 'Disc'} value={line.discount_amount || ''} onChange={(e) => updateLine(idx, 'discount_amount', e.target.value)} className="input-field col-span-1" />
@@ -418,6 +602,20 @@ export default function InvoicesPage() {
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal open={scannerOpen} onClose={() => setScannerOpen(false)} title={lang === 'ar' ? 'مسح باركود الصنف' : 'Scan product barcode'} size="lg">
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'وجّه الكاميرا إلى باركود الصنف، أو أدخل رقم الباركود يدويًا. إذا كان الصنف موجودًا في الفاتورة فستزداد كميته بمقدار واحد.' : 'Point the camera at a product barcode or enter its code manually. If the item is already on the invoice, its quantity increases by one.'}</p>
+          {scannerError && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-600 dark:text-error-400">{scannerError}</div>}
+          <div className="flex gap-2">
+            <input value={manualBarcode} onChange={(e) => setManualBarcode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const code = manualBarcode.trim(); const product = products.find((item) => (item.barcode ?? '').trim() === code); if (!code) return; if (!product) { setScannerError((lang === 'ar' ? 'لا يوجد صنف بهذا الباركود: ' : 'No product found for barcode: ') + code); return; } setForm((current) => { const existing = current.lines.findIndex((line) => line.product_id === product.id); if (existing >= 0) { const lines = [...current.lines]; lines[existing] = { ...lines[existing], quantity: (Number(lines[existing].quantity) || 0) + 1 }; return { ...current, lines }; } const blankIndex = current.lines.findIndex((line) => !line.product_id && !line.description.trim()); const newLine: FormLine = { product_id: product.id, description: lang === 'ar' ? product.name_ar ?? product.name : product.name, quantity: 1, unit_price: current.type === 'sale' || current.type === 'return_sale' ? product.sale_price : product.cost_price, discount_amount: 0, unit_id: '', unit_name_snapshot: lang === 'ar' ? 'وحدة أساسية' : 'Base unit', conversion_factor: 1 }; if (blankIndex >= 0) { const lines = [...current.lines]; lines[blankIndex] = newLine; return { ...current, lines }; } return { ...current, lines: [...current.lines, newLine] }; }); setManualBarcode(''); setScannerOpen(false); } }} placeholder={lang === 'ar' ? 'أدخل الباركود يدويًا' : 'Enter barcode manually'} className="input-field flex-1" />
+            <button onClick={() => { const code = manualBarcode.trim(); const product = products.find((item) => (item.barcode ?? '').trim() === code); if (!code) return; if (!product) { setScannerError((lang === 'ar' ? 'لا يوجد صنف بهذا الباركود: ' : 'No product found for barcode: ') + code); return; } setForm((current) => { const existing = current.lines.findIndex((line) => line.product_id === product.id); if (existing >= 0) { const lines = [...current.lines]; lines[existing] = { ...lines[existing], quantity: (Number(lines[existing].quantity) || 0) + 1 }; return { ...current, lines }; } const blankIndex = current.lines.findIndex((line) => !line.product_id && !line.description.trim()); const newLine: FormLine = { product_id: product.id, description: lang === 'ar' ? product.name_ar ?? product.name : product.name, quantity: 1, unit_price: form.type === 'sale' || form.type === 'return_sale' ? product.sale_price : product.cost_price, discount_amount: 0, unit_id: '', unit_name_snapshot: lang === 'ar' ? 'وحدة أساسية' : 'Base unit', conversion_factor: 1 }; if (blankIndex >= 0) { const lines = [...current.lines]; lines[blankIndex] = newLine; return { ...current, lines }; } return { ...current, lines: [...current.lines, newLine] }; }); setManualBarcode(''); setScannerOpen(false); }} className="btn-secondary">{lang === 'ar' ? 'إضافة' : 'Add'}</button>
+          </div>
+          <video ref={videoRef} muted playsInline className="w-full max-h-72 rounded-lg bg-black object-contain" />
+          {scannerStarting && <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"><Loader2 className="w-4 h-4 animate-spin" />{lang === 'ar' ? 'جارٍ تشغيل الكاميرا…' : 'Starting camera…'}</div>}
+          <div className="flex justify-end"><button onClick={() => setScannerOpen(false)} className="btn-secondary">{lang === 'ar' ? 'إغلاق' : 'Close'}</button></div>
         </div>
       </Modal>
 
