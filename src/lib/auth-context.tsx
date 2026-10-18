@@ -67,45 +67,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!profileData.tenant_id) {
+      // Resolve membership as the authoritative tenant relationship. A system-owner
+      // account may intentionally have profile.tenant_id = NULL, so look up its
+      // active primary membership instead of stopping before checking membership.
+      let membershipQuery = supabase
+        .from('tenant_members')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active');
+
+      if (profileData.tenant_id) {
+        membershipQuery = membershipQuery.eq('tenant_id', profileData.tenant_id);
+      } else {
+        membershipQuery = membershipQuery.eq('is_primary', true);
+      }
+
+      const { data: memberData, error: memberError } = await membershipQuery.maybeSingle();
+      if (memberError) throw memberError;
+      if (!mountedRef.current) return;
+
+      if (!memberData) {
         setTenant(null);
         setTenantMember(null);
         setRole(null);
         setIsOwner(false);
-        setAuthError('no_tenant');
+        setAuthError(profileData.tenant_id ? 'no_membership' : 'no_tenant');
         return;
       }
 
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .select('*')
-        .eq('id', profileData.tenant_id)
+        .eq('id', memberData.tenant_id)
         .maybeSingle();
 
       if (tenantError) throw tenantError;
       if (!mountedRef.current) return;
 
       setTenant(tenantData as Tenant | null);
+      setTenantMember(memberData as TenantMember);
 
-      const { data: memberData, error: memberError } = await supabase
-        .from('tenant_members')
-        .select('*')
-        .eq('tenant_id', profileData.tenant_id)
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (memberError) throw memberError;
-      if (!mountedRef.current) return;
-
-      setTenantMember(memberData as TenantMember | null);
-
+      // Ownership is granted only when the active membership belongs to a tenant
+      // explicitly marked as the system-owner tenant; never infer it from a role label.
       const tenantIsOwner = (tenantData as Tenant | null)?.is_owner ?? false;
-      setIsOwner(tenantIsOwner && !!memberData);
+      setIsOwner(tenantIsOwner);
 
-      if (!memberData) {
+      if (!tenantData) {
         setRole(null);
-        setAuthError('no_membership');
+        setAuthError('load_failed');
         return;
       }
 
@@ -221,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const authReady = !authError && !!profile && !!profile.tenant_id && !!tenantMember;
+  const authReady = !authError && !!profile && !!tenant && !!tenantMember;
 
   return (
     <AuthContext.Provider
