@@ -11,7 +11,7 @@ import {
 
 export default function InventoryPage() {
   const { t, lang } = useI18n();
-  const { profile } = useAuth();
+  const { profile, tenant } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
@@ -22,23 +22,33 @@ export default function InventoryPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [showUnitCreate, setShowUnitCreate] = useState(false);
+  const [newUnitName, setNewUnitName] = useState('');
+  const [newUnitNameAr, setNewUnitNameAr] = useState('');
+  const [savingUnit, setSavingUnit] = useState(false);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
     barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '',
   });
 
-  useEffect(() => { loadData(); }, [profile?.tenant_id]);
+  useEffect(() => { void loadData(); }, [tenant?.id]);
 
   async function loadData() {
     setLoading(true);
-    const tid = profile?.tenant_id;
+    const tid = tenant?.id;
     if (!tid) { setLoading(false); return; }
-    const [{ data: p }, { data: w }, { data: u }] = await Promise.all([
+    const [
+      { data: p, error: productsError },
+      { data: w, error: warehousesError },
+      { data: u, error: unitsError },
+    ] = await Promise.all([
       supabase.from('products').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('warehouses').select('*').eq('tenant_id', tid),
       supabase.from('units_of_measure').select('*').eq('tenant_id', tid),
     ]);
+    const loadError = productsError ?? warehousesError ?? unitsError;
+    if (loadError) setError(loadError.message);
     setProducts((p as Product[]) ?? []);
     setWarehouses((w as Warehouse[]) ?? []);
     setUnits((u as UnitOfMeasure[]) ?? []);
@@ -59,13 +69,46 @@ export default function InventoryPage() {
     setModalOpen(true);
   }
 
+  async function handleAddUnit() {
+    const unitName = newUnitName.trim();
+    if (!unitName) {
+      setError(lang === 'ar' ? 'اسم الوحدة مطلوب.' : 'Unit name is required.');
+      return;
+    }
+    if (!tenant?.id) {
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.');
+      return;
+    }
+    setSavingUnit(true);
+    setError('');
+    try {
+      const { data, error: insertError } = await supabase
+        .from('units_of_measure')
+        .insert({ tenant_id: tenant.id, name: unitName, name_ar: newUnitNameAr.trim() || null, is_base: false })
+        .select('*')
+        .single();
+      if (insertError) throw insertError;
+      if (!data) throw new Error(lang === 'ar' ? 'لم تُرجع قاعدة البيانات الوحدة المحفوظة.' : 'The database did not return the saved unit.');
+      const savedUnit = data as UnitOfMeasure;
+      setUnits((current) => [...current, savedUnit]);
+      setForm((current) => ({ ...current, unit_id: savedUnit.id }));
+      setNewUnitName('');
+      setNewUnitNameAr('');
+      setShowUnitCreate(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('error.generic'));
+    } finally {
+      setSavingUnit(false);
+    }
+  }
+
   async function handleSave() {
     if (!form.name.trim()) { setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required'); return; }
-    if (!profile?.tenant_id) return;
+    if (!tenant?.id || !profile?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة أو المستخدم الحالي.' : 'The current organization or user could not be resolved.'); return; }
     setSaving(true); setError('');
     try {
       const payload = {
-        tenant_id: profile.tenant_id,
+        tenant_id: tenant.id,
         code: form.code.trim() || null,
         name: form.name.trim(),
         name_ar: form.name_ar.trim() || null,
@@ -181,9 +224,29 @@ export default function InventoryPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'السعر' : 'Price'}</label><input type="number" step="0.01" value={form.sale_price || ''} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حد أدنى' : 'Min Stock'}</label><input type="number" step="0.01" value={form.min_stock || ''} onChange={(e) => setForm({ ...form, min_stock: Number(e.target.value) })} className="input-field" /></div>
           </div>
-          {units.length > 0 && (
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة' : 'Unit'}</label><select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} className="input-field"><option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>{units.map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name}</option>)}</select></div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة' : 'Unit'}</label>
+            <div className="flex gap-2">
+              <select value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} className="input-field min-w-0">
+                <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
+                {units.map((u) => <option key={u.id} value={u.id}>{lang === 'ar' ? u.name_ar ?? u.name : u.name}</option>)}
+              </select>
+              <button type="button" onClick={() => { setShowUnitCreate((value) => !value); setError(''); }} className="btn-secondary shrink-0" aria-expanded={showUnitCreate}>
+                {lang === 'ar' ? 'إضافة وحدة' : 'Add unit'}
+              </button>
+            </div>
+            {showUnitCreate && (
+              <div className="mt-3 rounded-lg border border-[var(--color-border)] p-3 space-y-2">
+                <input type="text" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} placeholder={lang === 'ar' ? 'اسم الوحدة *' : 'Unit name *'} className="input-field" />
+                <input type="text" value={newUnitNameAr} onChange={(e) => setNewUnitNameAr(e.target.value)} placeholder={lang === 'ar' ? 'الاسم بالعربية (اختياري)' : 'Arabic name (optional)'} className="input-field" dir="rtl" />
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => void handleAddUnit()} disabled={savingUnit} className="btn-primary">
+                    {savingUnit ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : (lang === 'ar' ? 'حفظ الوحدة' : 'Save unit')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
         </div>
       </Modal>
