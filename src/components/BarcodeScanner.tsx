@@ -6,6 +6,19 @@ interface DetectedBarcode { rawValue: string; format: string }
 interface BarcodeDetectorLike {
   detect(source: HTMLVideoElement): Promise<DetectedBarcode[]>;
 }
+function isValidEan13(value: string): boolean {
+  if (!/^\\d{13}$/.test(value)) return false;
+  const digits = value.split('').map(Number);
+  const sum = digits.slice(0, 12).reduce((total, digit, index) => total + digit * (index % 2 === 0 ? 1 : 3), 0);
+  return (10 - (sum % 10)) % 10 === digits[12];
+}
+
+function isSupportedValue(barcode: DetectedBarcode): boolean {
+  if (barcode.format === 'ean_13') return isValidEan13(barcode.rawValue);
+  if (barcode.format === 'code_128') return barcode.rawValue.length > 0 && barcode.rawValue.length <= 128 && /^[\\x20-\\x7E]+$/.test(barcode.rawValue);
+  return false;
+}
+
 interface BarcodeDetectorConstructorLike {
   new (options: { formats: SupportedBarcodeFormat[] }): BarcodeDetectorLike;
 }
@@ -86,9 +99,7 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
 
       try {
         const results = await detector.detect(video);
-        const match = results.find(item =>
-          (item.format === 'ean_13' || item.format === 'code_128') && /^\\d+$/.test(item.rawValue)
-        );
+        const match = results.find(isSupportedValue);
         if (match && match.rawValue) {
           if (lastValueRef.current === match.rawValue) {
             matchCountRef.current += 1;
