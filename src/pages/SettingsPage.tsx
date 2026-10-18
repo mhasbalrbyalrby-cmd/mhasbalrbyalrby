@@ -248,41 +248,175 @@ function WarehousesTab() {
 }
 
 function CurrenciesTab() {
-  const { t, lang } = useI18n();
-  const { profile } = useAuth();
-  const [currencies, setCurrencies] = useState<{ id: string; code: string; name: string; name_ar: string | null; is_base: boolean; is_active: boolean }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t, lang } = useI18n();
+  const { tenant } = useAuth();
+  type CurrencyRecord = {
+    id: string;
+    tenant_id: string | null;
+    code: string;
+    name: string;
+    name_ar: string | null;
+    symbol: string | null;
+    is_base: boolean;
+    is_active: boolean;
+    decimals: number;
+  };
+  const [currencies, setCurrencies] = useState<CurrencyRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState<CurrencyRecord | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ code: '', name: '', name_ar: '', symbol: '', decimals: '2', is_active: true });
 
-  useEffect(() => { load(); }, []);
-  async function load() {
-    setLoading(true);
-    const tid = profile?.tenant_id;
-    if (!tid) { setLoading(false); return; }
-    const { data } = await supabase.from('currencies').select('*').or(`tenant_id.eq.${tid},tenant_id.is.null`).order('code');
-    setCurrencies(data ?? []);
-    setLoading(false);
-  }
+  useEffect(() => { void load(); }, [tenant?.id]);
 
-  if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-text-muted)]" /></div>;
+  async function load() {
+    setLoading(true);
+    setError('');
+    const tid = tenant?.id;
+    if (!tid) {
+      setCurrencies([]);
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.');
+      setLoading(false);
+      return;
+    }
+    const { data, error: loadError } = await supabase
+      .from('currencies')
+      .select('*')
+      .or(`tenant_id.eq.${tid},tenant_id.is.null`)
+      .order('code');
+    if (loadError) {
+      setError(loadError.message);
+      setCurrencies([]);
+    } else {
+      setCurrencies((data as CurrencyRecord[]) ?? []);
+    }
+    setLoading(false);
+  }
 
-  return (
-    <div className="space-y-4 max-w-2xl">
-      {currencies.length === 0 ? <div className="card text-center py-8 text-[var(--color-text-muted)]">{t('common.no_data')}</div> : (
-        <div className="space-y-2">
-          {currencies.map((c) => (
-            <div key={c.id} className="card flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center"><Coins className="w-5 h-5 text-primary-600 dark:text-primary-400" /></div>
-                <div><div className="font-medium text-[var(--color-text)]">{c.code}</div><div className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? c.name_ar ?? c.name : c.name}</div></div>
-              </div>
-              <div className="flex gap-1">
-                {c.is_base && <span className="text-xs px-2 py-1 rounded-full bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">{lang === 'ar' ? 'أساسية' : 'Base'}</span>}
-                <span className={`text-xs px-2 py-1 rounded-full ${c.is_active ? 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400' : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400'}`}>{c.is_active ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'متوقف' : 'Inactive')}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  function openCreate() {
+    setEditing(null);
+    setForm({ code: '', name: '', name_ar: '', symbol: '', decimals: '2', is_active: true });
+    setError('');
+    setFormOpen(true);
+  }
+
+  function openEdit(currency: CurrencyRecord) {
+    if (!tenant?.id || currency.tenant_id !== tenant.id) return;
+    setEditing(currency);
+    setForm({
+      code: currency.code,
+      name: currency.name,
+      name_ar: currency.name_ar ?? '',
+      symbol: currency.symbol ?? '',
+      decimals: String(currency.decimals ?? 2),
+      is_active: currency.is_active,
+    });
+    setError('');
+    setFormOpen(true);
+  }
+
+  async function saveCurrency() {
+    if (!tenant?.id) {
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.');
+      return;
+    }
+    const code = form.code.trim().toUpperCase();
+    const name = form.name.trim();
+    if (!code || !name) {
+      setError(lang === 'ar' ? 'رمز العملة واسمها مطلوبان.' : 'Currency code and name are required.');
+      return;
+    }
+    const decimals = Number(form.decimals);
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 6) {
+      setError(lang === 'ar' ? 'عدد المنازل العشرية يجب أن يكون بين 0 و6.' : 'Decimal places must be an integer from 0 to 6.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        tenant_id: tenant.id,
+        code,
+        name,
+        name_ar: form.name_ar.trim() || null,
+        symbol: form.symbol.trim() || null,
+        decimals,
+        is_active: form.is_active,
+        is_base: editing?.is_base ?? false,
+      };
+      if (editing) {
+        const { data, error: updateError } = await supabase
+          .from('currencies')
+          .update(payload)
+          .eq('id', editing.id)
+          .eq('tenant_id', tenant.id)
+          .select('*')
+          .maybeSingle();
+        if (updateError) throw updateError;
+        if (!data) throw new Error(lang === 'ar'
+          ? 'لم يتم حفظ العملة: لا توجد صلاحية لتعديل هذا السجل أو لم يُعثر عليه.'
+          : 'Currency was not saved: update was not authorized or no matching row was found.');
+      } else {
+        const { data, error: insertError } = await supabase
+          .from('currencies')
+          .insert(payload)
+          .select('*')
+          .single();
+        if (insertError) throw insertError;
+        if (!data) throw new Error(lang === 'ar' ? 'لم تُرجع قاعدة البيانات العملة المحفوظة.' : 'The database did not return the saved currency.');
+      }
+      setFormOpen(false);
+      setEditing(null);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('error.generic'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-text-muted)]" /></div>;
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {error && <div role="alert" className="flex items-start gap-2 rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>{error}</span></div>}
+      <div className="flex justify-end">
+        <button type="button" onClick={openCreate} className="btn-primary">{lang === 'ar' ? 'إضافة عملة' : 'Add currency'}</button>
+      </div>
+      {formOpen && (
+        <div className="card space-y-3">
+          <h3 className="font-semibold text-[var(--color-text)]">{editing ? (lang === 'ar' ? 'تعديل العملة' : 'Edit currency') : (lang === 'ar' ? 'عملة جديدة' : 'New currency')}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="block text-sm mb-1">{lang === 'ar' ? 'رمز العملة *' : 'Currency code *'}</label><input maxLength={8} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input-field uppercase" /></div>
+            <div><label className="block text-sm mb-1">{lang === 'ar' ? 'الاسم *' : 'Name *'}</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm mb-1">{lang === 'ar' ? 'الاسم بالعربية' : 'Arabic name'}</label><input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} className="input-field" dir="rtl" /></div>
+            <div><label className="block text-sm mb-1">{lang === 'ar' ? 'الرمز المختصر' : 'Symbol'}</label><input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm mb-1">{lang === 'ar' ? 'المنازل العشرية (0–6)' : 'Decimal places (0–6)'}</label><input type="number" min="0" max="6" step="1" value={form.decimals} onChange={(e) => setForm({ ...form, decimals: e.target.value })} className="input-field" /></div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />{lang === 'ar' ? 'عملة نشطة' : 'Active currency'}</label>
+          </div>
+          <div className="flex justify-end gap-2"><button type="button" onClick={() => setFormOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={() => void saveCurrency()} disabled={saving} className="btn-primary">{saving ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : t('common.save')}</button></div>
+        </div>
+      )}
+      {currencies.length === 0 ? <div className="card text-center py-8 text-[var(--color-text-muted)]">{t('common.no_data')}</div> : (
+        <div className="space-y-2">
+          {currencies.map((currency) => (
+            <div key={currency.id} className="card flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center shrink-0"><Coins className="w-5 h-5 text-primary-600 dark:text-primary-400" /></div>
+                <div className="min-w-0"><div className="font-medium text-[var(--color-text)]">{currency.code} {currency.symbol ? `· ${currency.symbol}` : ''}</div><div className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? currency.name_ar ?? currency.name : currency.name}</div></div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {currency.is_base && <span className="text-xs px-2 py-1 rounded-full bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">{lang === 'ar' ? 'أساسية' : 'Base'}</span>}
+                <span className={`text-xs px-2 py-1 rounded-full ${currency.is_active ? 'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400' : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400'}`}>{currency.is_active ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'متوقف' : 'Inactive')}</span>
+                {currency.tenant_id === tenant?.id && <button type="button" onClick={() => openEdit(currency)} className="btn-secondary !p-2">{lang === 'ar' ? 'تعديل' : 'Edit'}</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
