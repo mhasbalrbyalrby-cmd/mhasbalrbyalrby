@@ -154,7 +154,7 @@ export default function InventoryPage() {
                   <td className="py-2 px-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.type === 'product' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-secondary-100 text-secondary-700 dark:bg-secondary-900/30 dark:text-secondary-400'}`}>{p.type === 'product' ? (lang === 'ar' ? 'منتج' : 'Product') : (lang === 'ar' ? 'خدمة' : 'Service')}</span></td>
                   <td className="py-2 px-3 text-end text-[var(--color-text-muted)]">{p.cost_price.toFixed(2)}</td>
                   <td className="py-2 px-3 text-end font-medium text-[var(--color-text)]">{p.sale_price.toFixed(2)}</td>
-                  <td className="py-2 px-3 text-end"><div className="flex gap-1 justify-end"><button onClick={() => openEdit(p)} className="btn-secondary !p-1.5"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleDelete(p)} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button></div></td>
+                  <td className="py-2 px-3 text-end"><div className="flex gap-1 justify-end"><button type="button" onClick={() => openEdit(p)} aria-label={lang === 'ar' ? `تعديل الصنف ${p.name_ar ?? p.name}` : `Edit item ${p.name}`} className="btn-secondary !p-1.5"><Pencil className="w-3.5 h-3.5" /></button><button type="button" onClick={() => handleDelete(p)} aria-label={lang === 'ar' ? `حذف الصنف ${p.name_ar ?? p.name}` : `Delete item ${p.name}`} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button></div></td>
                 </tr>
               ))}
             </tbody>
