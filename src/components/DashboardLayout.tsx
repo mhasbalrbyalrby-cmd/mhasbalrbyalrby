@@ -162,22 +162,22 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
       </aside>
 
       {/* Main content */}
-      <div className={`lg:${lang === 'ar' ? 'mr' : 'ml'}-64`}>
+      <div className={lang === 'ar' ? 'lg:mr-64 min-w-0 min-h-screen' : 'lg:ml-64 min-w-0 min-h-screen'}>
         {/* Top bar */}
-        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden btn-secondary !p-2"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="font-semibold text-[var(--color-text)]">
+            <h2 className="font-semibold text-[var(--color-text)] truncate min-w-0">
               {activeItem ? t(activeItem.labelKey) : ''}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0">
             {/* Language toggle */}
             <button
               onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
