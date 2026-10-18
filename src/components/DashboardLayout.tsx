@@ -165,6 +165,8 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
         <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-3 sm:px-4 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
+              type="button"
+              aria-label={lang === 'ar' ? 'فتح قائمة التنقل' : 'Open navigation menu'}
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden btn-secondary !p-2"
             >
@@ -178,6 +180,8 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
           <div className="flex items-center gap-2 shrink-0">
             {/* Language toggle */}
             <button
+              type="button"
+              aria-label={lang === 'ar' ? 'تغيير اللغة إلى الإنجليزية' : 'Switch language to Arabic'}
               onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
               className="btn-secondary !p-2"
               title={lang === 'ar' ? 'English' : 'العربية'}
@@ -187,17 +191,17 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
 
             {/* Theme toggle */}
             {mode === 'light' && (
-              <button onClick={() => setMode('dark')} className="btn-secondary !p-2" title={t('theme.dark')}>
+              <button type="button" aria-label={t('theme.dark')} onClick={() => setMode('dark')} className="btn-secondary !p-2" title={t('theme.dark')}>
                 <Moon className="w-4 h-4" />
               </button>
             )}
             {mode === 'dark' && (
-              <button onClick={() => setMode('high-contrast')} className="btn-secondary !p-2" title={t('theme.high_contrast')}>
+              <button type="button" aria-label={t('theme.high_contrast')} onClick={() => setMode('high-contrast')} className="btn-secondary !p-2" title={t('theme.high_contrast')}>
                 <Contrast className="w-4 h-4" />
               </button>
             )}
             {mode === 'high-contrast' && (
-              <button onClick={() => setMode('light')} className="btn-secondary !p-2" title={t('theme.light')}>
+              <button type="button" aria-label={t('theme.light')} onClick={() => setMode('light')} className="btn-secondary !p-2" title={t('theme.light')}>
                 <Sun className="w-4 h-4" />
               </button>
             )}
@@ -205,6 +209,9 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
             {/* User menu */}
             <div className="relative">
               <button
+                type="button"
+                aria-label={lang === 'ar' ? 'فتح قائمة الحساب' : 'Open account menu'}
+                aria-expanded={userMenuOpen}
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--color-bg)] transition-colors"
               >
