@@ -151,7 +151,7 @@ export default function InventoryPage() {
     setError('');
     setImportErrors([]);
     try {
-      const text = (await file.text()).replace(/^\\uFEFF/, '');
+      const text = (await file.text()).replace(/^\uFEFF/, '');
       const rows = parseCSV(text, ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'unit', 'category']);
       if (!rows.length) throw new Error(lang === 'ar' ? 'الملف فارغ أو لا يحتوي صفوف بيانات.' : 'The file is empty or contains no data rows.');
       const errors: string[] = [];
