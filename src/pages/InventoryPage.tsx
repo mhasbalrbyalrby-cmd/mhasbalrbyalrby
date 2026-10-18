@@ -9,6 +9,13 @@ import {
   Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload, Camera, Flashlight,
 } from 'lucide-react';
 
+function isValidEan13(value: string): boolean {
+  if (!/^\d{13}$/.test(value)) return false;
+  const digits = value.split('').map(Number);
+  const checksum = digits.slice(0, 12).reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0);
+  return (10 - (checksum % 10)) % 10 === digits[12];
+}
+
 function generateInternalBarcode(usedBarcodes: Set<string>): string {
   // Prefix 20 is reserved for in-store/internal EAN-13 numbering in many retail systems.
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -92,9 +99,12 @@ export default function InventoryPage() {
     setTorchSupported(false);
     setTorchOn(false);
 
-    type DetectedBarcode = { rawValue: string };
+    type DetectedBarcode = { rawValue: string; format?: string };
     type Detector = { detect: (source: HTMLVideoElement) => Promise<DetectedBarcode[]> };
     type DetectorConstructor = new (options?: { formats: string[] }) => Detector;
+
+    let candidateValue = '';
+    let candidateFrames = 0;
 
     async function startScanner() {
       try {
@@ -110,7 +120,7 @@ export default function InventoryPage() {
             : 'Camera access requires HTTPS and permission to use the camera.');
         }
 
-        const detector = new DetectorClass({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'] });
+        const detector = new DetectorClass({ formats: ['ean_13', 'code_128'] });
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
@@ -139,8 +149,16 @@ export default function InventoryPage() {
           try {
             if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
               const codes = await detector.detect(video);
-              if (codes.length && codes[0].rawValue.trim()) {
-                const value = codes[0].rawValue.trim();
+              const code = codes.find((item) => {
+                const value = item.rawValue.trim();
+                if (!value) return false;
+                if (item.format === 'ean_13') return isValidEan13(value);
+                return item.format === 'code_128';
+              });
+              const value = code?.rawValue.trim() ?? '';
+              if (value && value === candidateValue) candidateFrames += 1;
+              else { candidateValue = value; candidateFrames = value ? 1 : 0; }
+              if (value && candidateFrames >= 3) {
                 setForm((current) => ({ ...current, barcode: value }));
                 setScannerOpen(false);
                 return;
@@ -173,8 +191,9 @@ export default function InventoryPage() {
     const track = cameraTrackRef.current;
     if (!track || !torchSupported) return;
     try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn } as unknown as MediaTrackConstraintSet] });
-      setTorchOn((current) => !current);
+      const nextTorchState = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: nextTorchState } as unknown as MediaTrackConstraintSet] });
+      setTorchOn(nextTorchState);
       setScannerError('');
     } catch (torchError) {
       setScannerError(lang === 'ar'
