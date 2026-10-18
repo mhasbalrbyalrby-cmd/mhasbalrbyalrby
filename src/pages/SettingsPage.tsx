@@ -14,7 +14,7 @@ type Tab = 'company' | 'branches' | 'warehouses' | 'currencies' | 'appearance';
 export default function SettingsPage() {
   const { t, lang, setLang } = useI18n();
   const { mode, setMode } = useTheme();
-  const { profile, tenant } = useAuth();
+  const { tenant, refreshProfile } = useAuth();
   const [tab, setTab] = useState<Tab>('company');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -37,16 +37,25 @@ export default function SettingsPage() {
   }, [tenant]);
 
   async function saveCompany() {
-    if (!profile?.tenant_id || !tenant) return;
+    if (!tenant) {
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية. لم يتم حفظ التغييرات.' : 'The current organization could not be resolved. Changes were not saved.');
+      return;
+    }
     setSaving(true); setError(''); setSuccess('');
     try {
-      const { error: e } = await supabase.from('tenants').update({
+      const { data: savedTenant, error: e } = await supabase.from('tenants').update({
         name: companyForm.name.trim(),
         name_ar: companyForm.name_ar.trim() || null,
         settings: { ...tenant.settings, phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
-      }).eq('id', tenant.id);
+      }).eq('id', tenant.id).select('id').maybeSingle();
       if (e) throw e;
-      setSuccess(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
+      if (!savedTenant) {
+        throw new Error(lang === 'ar'
+          ? 'لم تُحفظ البيانات: لا توجد صلاحية تحديث للمؤسسة الحالية أو لم يُطابق السجل.'
+          : 'Nothing was saved: the current organization update was not authorized or no row matched.');
+      }
+      await refreshProfile();
+      setSuccess(lang === 'ar' ? 'تم الحفظ والتحقق من قاعدة البيانات بنجاح' : 'Saved and confirmed in the database');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally { setSaving(false); }
