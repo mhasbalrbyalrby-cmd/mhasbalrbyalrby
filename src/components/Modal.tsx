@@ -20,7 +20,7 @@ export default function Modal({ open, onClose, title, children, size = 'md' }: M
       <div className={`relative w-full ${maxW} card shadow-xl animate-scale-in max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--color-border)]">
           <h3 className="font-semibold text-[var(--color-text)]">{title}</h3>
-          <button onClick={onClose} className="btn-secondary !p-1.5">
+          <button type="button" onClick={onClose} aria-label="Close dialog" className="btn-secondary !p-1.5">
             <X className="w-4 h-4" />
           </button>
         </div>
