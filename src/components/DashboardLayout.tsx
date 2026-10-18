@@ -114,7 +114,7 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} bottom-0 w-64 bg-[var(--color-sidebar)] border-${lang === 'ar' ? 'l' : 'r'} border-[var(--color-border)] z-40 transform transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 ${lang === 'ar' ? 'right-0 border-l' : 'left-0 border-r'} w-64 bg-[var(--color-sidebar)] border-[var(--color-border)] z-40 transform transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen
             ? 'translate-x-0'
             : lang === 'ar'
@@ -160,22 +160,22 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
       </aside>
 
       {/* Main content */}
-      <div className={`lg:${lang === 'ar' ? 'mr' : 'ml'}-64`}>
+      <div className={lang === 'ar' ? 'lg:mr-64' : 'lg:ml-64'}>
         {/* Top bar */}
-        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-3 sm:px-4 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden btn-secondary !p-2"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="font-semibold text-[var(--color-text)]">
+            <h2 className="font-semibold text-[var(--color-text)] truncate min-w-0">
               {activeItem ? t(activeItem.labelKey) : ''}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Language toggle */}
             <button
               onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
@@ -249,7 +249,7 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
         </header>
 
         {/* Page content */}
-        <main className="p-4 lg:p-6 animate-fade-in">
+        <main className="p-3 sm:p-4 lg:p-6 min-w-0 animate-fade-in">
           {children}
         </main>
       </div>
