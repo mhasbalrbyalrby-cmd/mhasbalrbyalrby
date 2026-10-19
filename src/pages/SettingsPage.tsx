@@ -5,11 +5,11 @@ import { useTheme } from '../lib/theme-context';
 import { supabase } from '../lib/supabase';
 import type { Tenant } from './types/database';
 import {
-  Settings, Building2, MapPin, Coins, Package, Save, Loader2,
+  Settings, Building2, MapPin, Coins, Save, Loader2,
   AlertCircle, CheckCircle2, Sun, Moon, Contrast, Globe,
 } from 'lucide-react';
 
-type Tab = 'company' | 'branches' | 'warehouses' | 'currencies' | 'inventory' | 'appearance';
+type Tab = 'company' | 'branches' | 'warehouses' | 'currencies' | 'appearance';
 
 export default function SettingsPage() {
   const { t, lang, setLang } = useI18n();
@@ -112,7 +112,6 @@ export default function SettingsPage() {
     { code: 'branches', icon: MapPin, label: lang === 'ar' ? 'الفروع' : 'Branches' },
     { code: 'warehouses', icon: Building2, label: lang === 'ar' ? 'المخازن' : 'Warehouses' },
     { code: 'currencies', icon: Coins, label: lang === 'ar' ? 'العملات' : 'Currencies' },
-	    { code: 'inventory', icon: Package, label: lang === 'ar' ? 'إعدادات المخزون' : 'Inventory settings' },
     { code: 'appearance', icon: Globe, label: lang === 'ar' ? 'المظهر' : 'Appearance' },
   ];
 
@@ -174,8 +173,7 @@ export default function SettingsPage() {
 
       {tab === 'branches' && <BranchesTab />}
       {tab === 'warehouses' && <WarehousesTab />}
-      {tab === 'currencies' && <><CurrenciesTab /><ExchangeRatesTab />}
-	      {tab === 'inventory' && <InventorySettingsTab />}
+      {tab === 'currencies' && <><CurrenciesTab /><ExchangeRatesTab /></>}
       {tab === 'appearance' && (
         <div className="card space-y-4 max-w-2xl">
           <div>
@@ -570,82 +568,6 @@ function ExchangeRatesTab() {
           </table>
         </div>
       )}
-    </section>
-  );
-}
-
-
-function InventorySettingsTab() {
-  const { t, lang } = useI18n();
-  const { tenant, profile } = useAuth();
-  type CostingMethod = 'moving_average' | 'average_price' | 'weighted_average';
-  const [multipleUnits, setMultipleUnits] = useState(true);
-  const [allowNegativeStock, setAllowNegativeStock] = useState(false);
-  const [costingMethod, setCostingMethod] = useState<CostingMethod>('moving_average');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  useEffect(() => { void load(); }, [tenant?.id]);
-
-  async function load() {
-    setLoading(true);
-    setError('');
-    setSuccess('');
-    if (!tenant?.id) {
-      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.');
-      setLoading(false);
-      return;
-    }
-    const { data, error: loadError } = await supabase.from('tenant_settings').select('settings').eq('tenant_id', tenant.id).maybeSingle();
-    if (loadError) setError(loadError.message);
-    else {
-      const root = (data?.settings ?? {}) as Record<string, unknown>;
-      const saved = (root.inventory_controls ?? {}) as Record<string, unknown>;
-      setMultipleUnits(typeof saved.multiple_units === 'boolean' ? saved.multiple_units : true);
-      setAllowNegativeStock(typeof saved.allow_negative_stock === 'boolean' ? saved.allow_negative_stock : false);
-      const method = saved.costing_method;
-      setCostingMethod(method === 'average_price' || method === 'weighted_average' ? method : 'moving_average');
-    }
-    setLoading(false);
-  }
-
-  async function save() {
-    if (!tenant?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.'); return; }
-    setSaving(true);
-    setError('');
-    setSuccess('');
-    try {
-      const { data: current, error: readError } = await supabase.from('tenant_settings').select('settings').eq('tenant_id', tenant.id).maybeSingle();
-      if (readError) throw readError;
-      const root = (current?.settings ?? {}) as Record<string, unknown>;
-      const settings = { ...root, inventory_controls: { multiple_units: multipleUnits, allow_negative_stock: allowNegativeStock, costing_method: costingMethod } };
-      const { error: saveError } = await supabase.from('tenant_settings').upsert({ tenant_id: tenant.id, settings, updated_by: profile?.id ?? null }, { onConflict: 'tenant_id' });
-      if (saveError) throw saveError;
-      const { data: verify, error: verifyError } = await supabase.from('tenant_settings').select('settings').eq('tenant_id', tenant.id).maybeSingle();
-      if (verifyError) throw verifyError;
-      const persisted = ((verify?.settings ?? {}) as Record<string, unknown>).inventory_controls as Record<string, unknown> | undefined;
-      if (!persisted || persisted.multiple_units !== multipleUnits || persisted.allow_negative_stock !== allowNegativeStock || persisted.costing_method !== costingMethod) {
-        throw new Error(lang === 'ar' ? 'لم تتطابق إعدادات المخزون بعد إعادة قراءتها من قاعدة البيانات.' : 'Saved inventory settings did not match the values read back from the database.');
-      }
-      setSuccess(lang === 'ar' ? 'تم حفظ إعدادات المخزون والتحقق منها من قاعدة البيانات.' : 'Inventory settings were saved and verified from the database.');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('error.generic'));
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <section className="card max-w-3xl space-y-5">
-      <div><h3 className="font-semibold text-[var(--color-text)]">{lang === 'ar' ? 'إعدادات المخزون' : 'Inventory settings'}</h3><p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'تُحفظ الإعدادات ضمن بيانات المؤسسة ولا تغيّر أرصدة المخزون الحالية.' : 'Settings are stored with this organization and do not change existing stock balances.'}</p></div>
-      {error && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300">{error}</div>}
-      {success && <div role="status" className="rounded-lg bg-success-50 dark:bg-success-900/30 p-3 text-sm text-success-700 dark:text-success-300">{success}</div>}
-      {loading ? <div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'جارٍ تحميل الإعدادات…' : 'Loading settings…'}</div> : <>
-        <label className="flex items-start gap-3"><input type="checkbox" checked={multipleUnits} onChange={(event) => setMultipleUnits(event.target.checked)} className="mt-1" /><span><strong className="block text-sm">{lang === 'ar' ? 'تفعيل وحدات الصنف المتعددة' : 'Enable multiple product units'}</strong><span className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'السماح بإعداد وحدات مثل حبة وعبوة وكرتون للصنف.' : 'Allow units such as piece, pack, and carton per product.'}</span></span></label>
-        <label className="flex items-start gap-3"><input type="checkbox" checked={allowNegativeStock} onChange={(event) => setAllowNegativeStock(event.target.checked)} className="mt-1" /><span><strong className="block text-sm">{lang === 'ar' ? 'السماح بالمخزون السالب' : 'Allow negative stock'}</strong><span className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'مغلق افتراضيًا. حفظ هذا الخيار لا يفرضه بعد على جميع عمليات الصرف والترحيل.' : 'Off by default. Saving this option does not yet enforce it across all stock issue and posting flows.'}</span></span></label>
-        <div><label className="block text-sm font-medium mb-1.5">{lang === 'ar' ? 'طريقة تكلفة المخزون' : 'Inventory costing method'}</label><select value={costingMethod} onChange={(event) => setCostingMethod(event.target.value as CostingMethod)} className="input-field max-w-md"><option value="moving_average">{lang === 'ar' ? 'المتوسط المتحرك' : 'Moving average'}</option><option value="average_price">{lang === 'ar' ? 'متوسط الأسعار' : 'Average price'}</option><option value="weighted_average">{lang === 'ar' ? 'المتوسط المرجح' : 'Weighted average'}</option></select><p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'يُحفظ الاختيار الآن؛ يجب ربطه بمحرك تكلفة المخزون قبل اعتباره مطبقًا محاسبيًا.' : 'The selection is stored now; it must be wired into the inventory costing engine before it is considered accounting-effective.'}</p></div>
-        <div className="flex justify-end"><button type="button" onClick={() => void save()} disabled={saving} className="btn-primary">{saving ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : t('common.save')}</button></div>
-      </>}
     </section>
   );
 }
