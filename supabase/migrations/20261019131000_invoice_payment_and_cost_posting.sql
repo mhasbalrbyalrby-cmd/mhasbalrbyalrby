@@ -124,7 +124,11 @@ begin
         select id into v_cash_account from public.chart_of_accounts where id=v_cost.cash_account_id and tenant_id=v_tenant_id and type='asset' and is_active=true and is_postable=true;
         if v_cash_account is null then raise exception 'Invalid cash account for additional cost %', v_cost.id; end if;
       else
-        select pr.account_id into v_cost_party_account from public.party_roles pr where pr.party_id=v_cost.party_id and pr.account_id is not null limit 1;
+        select pr.account_id into v_cost_party_account
+        from public.party_roles pr
+        join public.parties party on party.id=pr.party_id and party.tenant_id=v_tenant_id
+        join public.chart_of_accounts coa on coa.id=pr.account_id and coa.tenant_id=v_tenant_id and coa.is_active=true and coa.is_postable=true
+        where pr.party_id=v_cost.party_id and pr.account_id is not null limit 1;
         if v_cost_party_account is null then
           select id into v_cost_party_account from public.chart_of_accounts where tenant_id=v_tenant_id and sub_type='accounts_payable' and is_postable=true and is_active=true order by code limit 1;
         end if;
