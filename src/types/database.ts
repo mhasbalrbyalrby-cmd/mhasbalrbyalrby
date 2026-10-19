@@ -378,6 +378,10 @@ export interface Invoice {
   party_id: string | null;
   date: string;
   due_date: string | null;
+  payment_method: 'cash' | 'credit';
+  cash_account_id: string | null;
+  tax_enabled: boolean;
+  tax_rate: number;
   currency: string;
   subtotal: number;
   discount_amount: number;
