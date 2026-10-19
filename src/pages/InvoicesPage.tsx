@@ -19,6 +19,25 @@ interface FormLine {
   discount_amount: number;
 }
 
+interface AdditionalCostForm {
+  description: string;
+  amount: number;
+  payment_method: 'cash' | 'credit';
+  cash_account_id: string;
+  party_id: string;
+}
+
+interface CashAccountOption {
+  id: string;
+  code: string;
+  name: string;
+  name_ar: string | null;
+  type: string;
+  sub_type: string | null;
+  is_active: boolean;
+  is_postable: boolean;
+}
+
 export default function InvoicesPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -29,6 +48,7 @@ export default function InvoicesPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [currencyOptions, setCurrencyOptions] = useState<{ code: string; name: string; name_ar: string | null; tenant_id: string | null; is_base: boolean }[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{ from_currency: string; to_currency: string; rate: number; date: string }[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccountOption[]>([]);
   const [baseCurrencyCode, setBaseCurrencyCode] = useState('SAR');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -49,10 +69,31 @@ export default function InvoicesPage() {
     warehouse_id: '',
     shift_id: '',
     discount_amount: 0,
+    payment_method: 'credit' as 'cash' | 'credit',
+    cash_account_id: '',
+    tax_enabled: false,
+    tax_rate: 0,
+    additional_costs: [] as AdditionalCostForm[],
     lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }] as FormLine[],
   });
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const tenantId = profile?.tenant_id;
+    if (!tenantId) return;
+    void supabase.from('chart_of_accounts')
+      .select('id,code,name,name_ar,type,sub_type,is_active,is_postable')
+      .eq('tenant_id', tenantId).eq('type', 'asset').eq('is_active', true).eq('is_postable', true)
+      .order('code')
+      .then(({ data, error }) => {
+        if (error) { setCashAccounts([]); return; }
+        const rows = (data ?? []) as CashAccountOption[];
+        // The live chart currently has 1010 (Cash) and 1020 (Bank) as separate postable assets;
+        // only cash-named accounts are offered as cash drawers, never every current asset.
+        setCashAccounts(rows.filter((a) => a.code === '1010' || a.sub_type === 'cash' || /cash|cashbox|cash drawer/i.test(a.name) || /نقدية|صندوق|خزينة/.test(a.name_ar ?? '')));
+      });
+  }, [profile?.tenant_id]);
 
   useEffect(() => {
     const tenantId = profile?.tenant_id;
@@ -113,6 +154,11 @@ export default function InvoicesPage() {
       warehouse_id: '',
       shift_id: '',
       discount_amount: 0,
+      payment_method: 'credit',
+      cash_account_id: '',
+      tax_enabled: false,
+      tax_rate: 0,
+      additional_costs: [],
       lines: [{ product_id: '', description: '', quantity: 1, unit_price: 0, discount_amount: 0 }],
     });
     setError('');
@@ -145,9 +191,10 @@ export default function InvoicesPage() {
   const subtotal = lineTotals.reduce((s, v) => s + v, 0);
   const invoiceDiscount = Number(form.discount_amount) || 0;
   const afterDiscount = Math.max(0, subtotal - invoiceDiscount);
-  const taxRate = 0.15;
-  const taxAmount = (form.type === 'sale' || form.type === 'return_sale') ? afterDiscount * taxRate : 0;
+  const taxRate = form.tax_enabled ? Math.max(0, Number(form.tax_rate) || 0) / 100 : 0;
+  const taxAmount = form.tax_enabled ? afterDiscount * taxRate : 0;
   const total = afterDiscount + taxAmount;
+  const additionalCostsTotal = form.type === 'purchase' ? form.additional_costs.reduce((sum, cost) => sum + Math.max(0, Number(cost.amount) || 0), 0) : 0;
   const applicableExchangeRate = form.currency === baseCurrencyCode ? null : exchangeRates
     .filter((item) => item.date <= form.date && ((item.from_currency === form.currency && item.to_currency === baseCurrencyCode) || (item.from_currency === baseCurrencyCode && item.to_currency === form.currency)))
     .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
@@ -165,6 +212,18 @@ export default function InvoicesPage() {
       setError(lang === 'ar' ? 'أضف سطرًا واحدًا على الأقل' : 'Add at least one line');
       return;
     }
+    if (form.payment_method === 'cash' && !form.cash_account_id) {
+      setError(lang === 'ar' ? 'اختر حساب الصندوق للفاتورة النقدية' : 'Select a cash account for this cash invoice');
+      return;
+    }
+    if (form.tax_enabled && (!Number.isFinite(Number(form.tax_rate)) || Number(form.tax_rate) < 0 || Number(form.tax_rate) > 100)) {
+      setError(lang === 'ar' ? 'أدخل نسبة ضريبة بين 0 و100' : 'Enter a tax rate between 0 and 100');
+      return;
+    }
+    if (form.type === 'purchase' && form.additional_costs.some((c) => !c.description.trim() || !(Number(c.amount) > 0) || (c.payment_method === 'cash' ? !c.cash_account_id : !c.party_id))) {
+      setError(lang === 'ar' ? 'أكمل وصف ومبلغ وطريقة سداد وحساب كل تكلفة إضافية' : 'Complete each additional cost description, amount, payment method, and account/party');
+      return;
+    }
 
     setSaving(true);
     setError('');
@@ -180,6 +239,10 @@ export default function InvoicesPage() {
           party_id: form.party_id,
           date: form.date,
           due_date: form.due_date || null,
+          payment_method: form.payment_method,
+          cash_account_id: form.payment_method === 'cash' ? form.cash_account_id : null,
+          tax_enabled: form.tax_enabled,
+          tax_rate: form.tax_enabled ? Number(form.tax_rate) : 0,
           currency: form.currency,
           subtotal,
           discount_amount: invoiceDiscount,
@@ -211,6 +274,26 @@ export default function InvoicesPage() {
 
       const { error: linesErr } = await supabase.from('invoice_lines').insert(linePayloads);
       if (linesErr) throw linesErr;
+
+      if (form.type === 'purchase' && form.additional_costs.length > 0) {
+        const costsPayload = form.additional_costs.map((cost, index) => ({
+          tenant_id: profile.tenant_id,
+          invoice_id: invId,
+          description: cost.description.trim(),
+          amount: Number(cost.amount),
+          payment_method: cost.payment_method,
+          cash_account_id: cost.payment_method === 'cash' ? cost.cash_account_id : null,
+          party_id: cost.payment_method === 'credit' ? cost.party_id : null,
+          line_order: index,
+          created_by: profile.id,
+        }));
+        const { error: costsErr } = await supabase.from('invoice_additional_costs').insert(costsPayload);
+        if (costsErr) {
+          await supabase.from('invoice_lines').delete().eq('invoice_id', invId);
+          await supabase.from('invoices').delete().eq('id', invId);
+          throw costsErr;
+        }
+      }
 
       setModalOpen(false);
       await loadData();
@@ -381,7 +464,26 @@ export default function InvoicesPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
               <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="input-field" />
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختياري؛ يترك فارغًا عند عدم وجود أجل محدد.' : 'Optional; leave blank when no due date is set.'}</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'طريقة الدفع' : 'Payment method'}</label>
+              <select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value as 'cash' | 'credit' })} className="input-field">
+                <option value="credit">{lang === 'ar' ? 'آجل — ذمم الجهة' : 'Credit — party receivable/payable'}</option>
+                <option value="cash">{lang === 'ar' ? 'نقدي — صندوق' : 'Cash — cash account'}</option>
+              </select>
+            </div>
+            {form.payment_method === 'cash' && <div>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حساب الصندوق' : 'Cash account'}</label>
+              <select value={form.cash_account_id} onChange={(e) => setForm({ ...form, cash_account_id: e.target.value })} className="input-field">
+                <option value="">{lang === 'ar' ? 'اختر حساب الصندوق' : 'Select cash account'}</option>
+                {cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {lang === 'ar' ? a.name_ar ?? a.name : a.name}</option>)}
+              </select>
+              {cashAccounts.length === 0 && <p className="mt-1 text-xs text-error-600">{lang === 'ar' ? 'لا يوجد حساب صندوق نشط وقابل للترحيل في دليل الحسابات.' : 'No active postable cash account was found in the chart of accounts.'}</p>}
+            </div>}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -451,6 +553,28 @@ export default function InvoicesPage() {
           </div>
           <p className="text-xs text-[var(--color-text-muted)] -mt-2">{lang === 'ar' ? 'ملاحظة: الخدمات لا تؤثر على المخزون ولا تنشئ تكلفة بيع مخزنية. إيرادات الخدمات ترتبط بالحساب المناسب وفق إعدادات المؤسسة.' : 'Note: Services do not affect inventory or create stock COGS. Service revenue links to the appropriate account per settings.'}</p>
 
+          {form.type === 'purchase' && <div className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-semibold text-[var(--color-text)]">{lang === 'ar' ? 'تكاليف الشراء الإضافية' : 'Additional purchase costs'}</h3>
+              <button type="button" onClick={() => setForm({ ...form, additional_costs: [...form.additional_costs, { description: '', amount: 0, payment_method: 'cash', cash_account_id: '', party_id: '' }] })} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'إضافة تكلفة' : 'Add cost'}</button>
+            </div>
+            {form.additional_costs.length === 0 && <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'لا توجد تكاليف إضافية.' : 'No additional costs.'}</p>}
+            {form.additional_costs.map((cost, index) => <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md bg-[var(--color-bg)] p-2">
+              <input aria-label={lang === 'ar' ? 'وصف التكلفة' : 'Cost description'} value={cost.description} onChange={(e) => setForm({ ...form, additional_costs: form.additional_costs.map((c, i) => i === index ? { ...c, description: e.target.value } : c) })} placeholder={lang === 'ar' ? 'الوصف (نقل، تحميل...)' : 'Description (freight, loading...)'} className="input-field" />
+              <input aria-label={lang === 'ar' ? 'مبلغ التكلفة' : 'Cost amount'} type="number" min="0.01" step="0.01" value={cost.amount || ''} onChange={(e) => setForm({ ...form, additional_costs: form.additional_costs.map((c, i) => i === index ? { ...c, amount: Number(e.target.value) } : c) })} placeholder={lang === 'ar' ? 'المبلغ' : 'Amount'} className="input-field" />
+              <select aria-label={lang === 'ar' ? 'طريقة سداد التكلفة' : 'Cost payment method'} value={cost.payment_method} onChange={(e) => setForm({ ...form, additional_costs: form.additional_costs.map((c, i) => i === index ? { ...c, payment_method: e.target.value as 'cash' | 'credit', cash_account_id: '', party_id: '' } : c) })} className="input-field">
+                <option value="cash">{lang === 'ar' ? 'نقداً من صندوق' : 'Cash from cash account'}</option><option value="credit">{lang === 'ar' ? 'آجل — على ذمة جهة' : 'Credit — payable to party'}</option>
+              </select>
+              {cost.payment_method === 'cash' ? <select aria-label={lang === 'ar' ? 'صندوق سداد التكلفة' : 'Cost cash account'} value={cost.cash_account_id} onChange={(e) => setForm({ ...form, additional_costs: form.additional_costs.map((c, i) => i === index ? { ...c, cash_account_id: e.target.value } : c) })} className="input-field">
+                <option value="">{lang === 'ar' ? 'اختر الصندوق' : 'Select cash account'}</option>{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {lang === 'ar' ? a.name_ar ?? a.name : a.name}</option>)}
+              </select> : <select aria-label={lang === 'ar' ? 'الجهة صاحبة الذمة' : 'Creditor party'} value={cost.party_id} onChange={(e) => setForm({ ...form, additional_costs: form.additional_costs.map((c, i) => i === index ? { ...c, party_id: e.target.value } : c) })} className="input-field">
+                <option value="">{lang === 'ar' ? 'اختر الجهة' : 'Select party'}</option>{parties.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}
+              </select>}
+              <button type="button" onClick={() => setForm({ ...form, additional_costs: form.additional_costs.filter((_, i) => i !== index) })} className="btn-secondary text-error-500 justify-self-start">{lang === 'ar' ? 'حذف التكلفة' : 'Remove cost'}</button>
+            </div>)}
+            <div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'تُرسمل هذه التكاليف على المخزون عند الترحيل، وتُوزّع على سطور المنتجات بحسب قيمتها.' : 'These costs are capitalized into inventory at posting and allocated across product lines by value.'}</div>
+          </div>}
+
           <div className="space-y-1 p-3 rounded-lg bg-[var(--color-bg)]">
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
@@ -460,12 +584,11 @@ export default function InvoicesPage() {
               <span className="text-[var(--color-text-muted)]">{lang === 'ar' ? (form.type === 'sale' || form.type === 'return_sale' ? 'الخصم المسموح به (مبيعات)' : 'الخصم المكتسب (مشتريات)') : (form.type === 'sale' || form.type === 'return_sale' ? 'Discount Allowed (Sales)' : 'Discount Earned (Purchases)')}</span>
               <input type="number" step="0.01" value={form.discount_amount || ''} onChange={(e) => setForm({ ...form, discount_amount: Number(e.target.value) })} className="input-field !w-32 !py-1 text-end" />
             </div>
-            {(form.type === 'sale' || form.type === 'return_sale') && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'ضريبة القيمة المضافة (15%)' : 'VAT (15%)'}</span>
-                <span className="text-[var(--color-text)]">{taxAmount.toFixed(2)} {form.currency}</span>
-              </div>
-            )}
+            <div className="space-y-2 border-t border-[var(--color-border)] pt-2">
+              <label className="flex items-center gap-2 text-sm text-[var(--color-text)]"><input type="checkbox" checked={form.tax_enabled} onChange={(e) => setForm({ ...form, tax_enabled: e.target.checked, tax_rate: e.target.checked && form.tax_rate === 0 ? 15 : form.tax_rate })} />{lang === 'ar' ? 'تفعيل ضريبة القيمة المضافة' : 'Enable VAT'}</label>
+              {form.tax_enabled && <div className="flex items-center justify-between gap-3 text-sm"><label className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'النسبة %' : 'Tax rate %'}</label><input type="number" min="0" max="100" step="0.01" value={form.tax_rate} onChange={(e) => setForm({ ...form, tax_rate: Number(e.target.value) })} className="input-field !w-28 !py-1 text-end" /><span className="text-[var(--color-text)]">{taxAmount.toFixed(2)} {form.currency}</span></div>}
+            </div>
+            {form.type === 'purchase' && additionalCostsTotal > 0 && <div className="flex items-center justify-between text-sm"><span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'تكاليف إضافية (ترسمل على المخزون)' : 'Additional costs (capitalized to inventory)'}</span><span className="text-[var(--color-text)]">{additionalCostsTotal.toFixed(2)} {form.currency}</span></div>}
             <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]">
               <span className="font-medium text-[var(--color-text)]">{lang === 'ar' ? 'الإجمالي' : 'Total'}</span>
               <span className="text-lg font-bold text-[var(--color-text)]">{total.toFixed(2)} {form.currency}</span>
