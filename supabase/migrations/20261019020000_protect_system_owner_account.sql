@@ -34,6 +34,13 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
 BEGIN
+  -- Once the primary owner tenant exists, no ordinary update may promote
+  -- another tenant into a second System Owner tenant.
+  IF OLD.is_owner IS NOT TRUE AND TG_OP = 'UPDATE' AND NEW.is_owner IS TRUE THEN
+    RAISE EXCEPTION 'A second System Owner tenant cannot be created by updating a tenant.'
+      USING ERRCODE = '42501';
+  END IF;
+
   IF OLD.is_owner IS TRUE THEN
     IF TG_OP = 'DELETE' THEN
       RAISE EXCEPTION 'The primary System Owner tenant cannot be deleted.'
