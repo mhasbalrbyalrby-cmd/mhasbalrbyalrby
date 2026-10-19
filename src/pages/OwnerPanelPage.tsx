@@ -6,7 +6,7 @@ import type { Tenant, SubscriptionPlan, AuditLog, PrepaidCard, SystemSetting } f
 import {
   Building2, CreditCard, FileBarChart, Users, Settings,
   BookOpen, Shield, Loader2, AlertCircle, Plus, XCircle,
-  CheckCircle2, Ban, RefreshCw, Save, Eye, Boxes, Puzzle,
+  CheckCircle2, Ban, RefreshCw, Save, Eye, Boxes, Puzzle, Download,
 } from 'lucide-react';
 import Modal from '@/components/Modal';
 
@@ -234,6 +234,21 @@ function TenantsTab({
         ))}
       </div>
 
+      <div className="flex justify-end">
+        <button type="button" onClick={() => {
+          const headers = ['name', 'name_ar', 'slug', 'status', 'is_owner', 'plan', 'max_users', 'created_at'];
+          const rows = tenants.map((tenant) => {
+            const plan = plans.find((item) => item.id === tenant.plan_id);
+            return [tenant.name, tenant.name_ar ?? '', tenant.slug, tenant.status, String(tenant.is_owner), plan?.name ?? '', String(tenant.max_users), tenant.created_at];
+          });
+          const escapeCsv = (value: unknown) => { const text = String(value ?? ''); return /[",\\r\\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text; };
+          const csv = '\\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\\r\\n');
+          const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+          const link = document.createElement('a'); link.href = url; link.download = 'tenants.csv'; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+        }} disabled={tenants.length === 0} className="btn-secondary flex items-center gap-2">
+          <Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير المستأجرين CSV' : 'Export tenants CSV'}
+        </button>
+      </div>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
