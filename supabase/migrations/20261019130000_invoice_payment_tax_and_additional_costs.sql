@@ -33,6 +33,8 @@ create index if not exists invoice_additional_costs_tenant_invoice_idx
 
 alter table public.invoice_additional_costs enable row level security;
 
+grant select, insert, update, delete on public.invoice_additional_costs to authenticated;
+
 drop policy if exists invoice_additional_costs_select_tenant on public.invoice_additional_costs;
 create policy invoice_additional_costs_select_tenant
   on public.invoice_additional_costs for select to authenticated
