@@ -74,22 +74,22 @@ drop policy if exists stock_document_lines_insert_drafts on public.stock_documen
 create policy stock_document_lines_insert_drafts on public.stock_document_lines
   for insert to authenticated with check (
     (public.is_owner_user() or public.is_tenant_member(tenant_id))
-    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=tenant_id and d.status='draft')
+    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=stock_document_lines.tenant_id and d.status='draft')
   );
 drop policy if exists stock_document_lines_update_drafts on public.stock_document_lines;
 create policy stock_document_lines_update_drafts on public.stock_document_lines
   for update to authenticated using (
     (public.is_owner_user() or public.is_tenant_member(tenant_id))
-    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=tenant_id and d.status='draft')
+    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=stock_document_lines.tenant_id and d.status='draft')
   ) with check (
     (public.is_owner_user() or public.is_tenant_member(tenant_id))
-    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=tenant_id and d.status='draft')
+    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=stock_document_lines.tenant_id and d.status='draft')
   );
 drop policy if exists stock_document_lines_delete_drafts on public.stock_document_lines;
 create policy stock_document_lines_delete_drafts on public.stock_document_lines
   for delete to authenticated using (
     (public.is_owner_user() or public.is_tenant_member(tenant_id))
-    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=tenant_id and d.status='draft')
+    and exists (select 1 from public.stock_documents d where d.id=document_id and d.tenant_id=stock_document_lines.tenant_id and d.status='draft')
   );
 
 grant select, insert, update, delete on public.stock_documents, public.stock_document_lines to authenticated;
