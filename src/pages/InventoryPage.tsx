@@ -119,6 +119,13 @@ export default function InventoryPage() {
     if (!form.name.trim()) { setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required'); return; }
     if (!tenant?.id || !profile?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة أو المستخدم الحالي.' : 'The current organization or user could not be resolved.'); return; }
     const namedUnitsBeforeSave = form.type === 'product' ? productUnits.filter((u) => u.name.trim()) : [];
+    for (const [field, label] of [['cost_price', lang === 'ar' ? 'سعر التكلفة' : 'Cost price'], ['sale_price', lang === 'ar' ? 'سعر البيع' : 'Sale price'], ['min_stock', lang === 'ar' ? 'الحد الأدنى للمخزون' : 'Minimum stock']] as const) {
+      const raw = form[field].trim();
+      if (raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+        setError(lang === 'ar' ? `قيمة غير صحيحة في ${label}؛ أدخل رقمًا غير سالب.` : `Invalid ${label}; enter a non-negative number.`);
+        return;
+      }
+    }
     if (namedUnitsBeforeSave.length && namedUnitsBeforeSave.filter((u) => u.is_base).length !== 1) { setError(lang === 'ar' ? 'حدد وحدة أساسية واحدة فقط.' : 'Select exactly one base unit.'); return; }
     if (namedUnitsBeforeSave.some((u) => !Number.isFinite(Number(u.factor)) || Number(u.factor) <= 0)) { setError(lang === 'ar' ? 'معامل تحويل الوحدة يجب أن يكون أكبر من صفر.' : 'Unit conversion factor must be greater than zero.'); return; }
     const unitBarcodes = namedUnitsBeforeSave.map((u) => u.barcode.trim()).filter(Boolean);
@@ -270,7 +277,7 @@ export default function InventoryPage() {
       const textValue = String(value ?? '');
       return /[",\\r\\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
     };
-    const csv = '\\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\\r\\n');
+    const csv = '\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
