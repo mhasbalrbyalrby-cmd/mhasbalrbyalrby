@@ -657,7 +657,7 @@ function AuditTab({ logs, lang, onRefresh }: { logs: AuditLog[]; lang: string; o
 // ──────────────────────────────────────────────────────────────
 function UsersTab({ lang }: { lang: string }) {
   const [profiles, setProfiles] = useState<{ id: string; full_name: string | null; email: string | null; tenant_id: string | null; is_active: boolean }[]>([]);
-  const [members, setMembers] = useState<{ id: string; tenant_id: string; user_id: string; role_id: string | null; status: string; joined_at: string | null }[]>([]);
+  const [members, setMembers] = useState<{ id: string; tenant_id: string; user_id: string; role_id: string | null; status: string; joined_at: string | null; is_primary: boolean }[]>([]);
   const [tenants, setTenants] = useState<{ id: string; name: string; is_owner: boolean }[]>([]);
   const [roles, setRoles] = useState<{ id: string; name: string; name_ar: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -676,7 +676,7 @@ function UsersTab({ lang }: { lang: string }) {
     try {
       const [{ data: p }, { data: m }, { data: t }, { data: r }] = await Promise.all([
         supabase.from('profiles').select('id, full_name, email, tenant_id, is_active').order('created_at', { ascending: false }),
-        supabase.from('tenant_members').select('id, tenant_id, user_id, role_id, status, joined_at').order('created_at', { ascending: false }),
+        supabase.from('tenant_members').select('id, tenant_id, user_id, role_id, status, joined_at, is_primary').order('created_at', { ascending: false }),
         supabase.from('tenants').select('id, name, is_owner').order('name'),
         supabase.from('roles').select('id, name, name_ar').eq('is_system', true).order('sort_order'),
       ]);
@@ -715,6 +715,12 @@ function UsersTab({ lang }: { lang: string }) {
   }
 
   async function toggleMembershipStatus(memberId: string, currentStatus: string) {
+    const member = members.find((item) => item.id === memberId);
+    const protectedOwnerMembership = !!member && member.is_primary && tenants.some((item) => item.id === member.tenant_id && item.is_owner);
+    if (protectedOwnerMembership) {
+      setError(lang === 'ar' ? 'حساب المالك الأساسي محمي ولا يمكن تغيير حالته.' : 'The primary System Owner account is protected from status changes.');
+      return;
+    }
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
     const { error: e } = await supabase.from('tenant_members').update({ status: newStatus }).eq('id', memberId);
     if (e) { setError(e.message); return; }
@@ -722,6 +728,12 @@ function UsersTab({ lang }: { lang: string }) {
   }
 
   async function updateMemberRole(memberId: string, roleId: string) {
+    const member = members.find((item) => item.id === memberId);
+    const protectedOwnerMembership = !!member && member.is_primary && tenants.some((item) => item.id === member.tenant_id && item.is_owner);
+    if (protectedOwnerMembership) {
+      setError(lang === 'ar' ? 'حساب المالك الأساسي محمي ولا يمكن تغيير دوره.' : 'The primary System Owner account is protected from role changes.');
+      return;
+    }
     const { error: e } = await supabase.from('tenant_members').update({ role_id: roleId || null }).eq('id', memberId);
     if (e) { setError(e.message); return; }
     load();
@@ -773,6 +785,7 @@ function UsersTab({ lang }: { lang: string }) {
             <tbody>
               {profiles.map((p) => {
                 const m = memberForUser(p.id);
+                const isProtectedOwner = !!m && m.is_primary && tenants.some((tenant) => tenant.id === m.tenant_id && tenant.is_owner);
                 return (
                   <tr key={p.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-bg)]">
                     <td className="py-2 px-3 font-medium text-[var(--color-text)]">{p.full_name ?? '—'}</td>
@@ -780,10 +793,13 @@ function UsersTab({ lang }: { lang: string }) {
                     <td className="py-2 px-3 text-[var(--color-text-muted)]">{tenantName(p.tenant_id)}</td>
                     <td className="py-2 px-3">
                       {m ? (
-                        <select value={m.role_id ?? ''} onChange={(e) => updateMemberRole(m.id, e.target.value)} className="input-field !py-1 !text-xs">
+                        <div className="space-y-1">
+                        <select value={m.role_id ?? ''} disabled={isProtectedOwner} onChange={(e) => updateMemberRole(m.id, e.target.value)} className="input-field !py-1 !text-xs disabled:opacity-60 disabled:cursor-not-allowed" title={isProtectedOwner ? (lang === 'ar' ? 'دور المالك الأساسي محمي' : 'Primary System Owner role is protected') : undefined}>
                           <option value="">{lang === 'ar' ? 'بدون دور' : 'No role'}</option>
                           {roles.map((r) => <option key={r.id} value={r.id}>{lang === 'ar' ? r.name_ar ?? r.name : r.name}</option>)}
                         </select>
+                        {isProtectedOwner && <span className="inline-flex items-center gap-1 text-[11px] text-success-700 dark:text-success-400"><Shield className="w-3 h-3" />{lang === 'ar' ? 'المالك الأساسي — محمي' : 'Primary owner — protected'}</span>}
+                        </div>
                       ) : <span className="text-[var(--color-text-muted)]">—</span>}
                     </td>
                     <td className="py-2 px-3">
