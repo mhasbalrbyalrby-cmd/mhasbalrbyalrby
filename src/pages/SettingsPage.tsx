@@ -173,7 +173,7 @@ export default function SettingsPage() {
 
       {tab === 'branches' && <BranchesTab />}
       {tab === 'warehouses' && <WarehousesTab />}
-      {tab === 'currencies' && <CurrenciesTab />}
+      {tab === 'currencies' && <><CurrenciesTab /><ExchangeRatesTab /></>}
       {tab === 'appearance' && (
         <div className="card space-y-4 max-w-2xl">
           <div>
@@ -464,5 +464,110 @@ function CurrenciesTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function ExchangeRatesTab() {
+  const { t, lang } = useI18n();
+  const { tenant, profile } = useAuth();
+  type CurrencyOption = { id: string; tenant_id: string | null; code: string; name: string; name_ar: string | null; is_active: boolean };
+  type RateRow = { id: string; tenant_id: string; from_currency: string; to_currency: string; rate: number; date: string; created_at: string };
+  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
+  const [rates, setRates] = useState<RateRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [fromCurrency, setFromCurrency] = useState('');
+  const [toCurrency, setToCurrency] = useState('');
+  const [rate, setRate] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+
+  useEffect(() => { void load(); }, [tenant?.id]);
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    if (!tenant?.id) {
+      setCurrencies([]);
+      setRates([]);
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية.' : 'The current organization could not be resolved.');
+      setLoading(false);
+      return;
+    }
+    const [currencyResult, rateResult] = await Promise.all([
+      supabase.from('currencies').select('id,tenant_id,code,name,name_ar,is_active').or(`tenant_id.eq.${tenant.id},tenant_id.is.null`).eq('is_active', true).order('code'),
+      supabase.from('exchange_rates').select('*').eq('tenant_id', tenant.id).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(100),
+    ]);
+    if (currencyResult.error) setError(currencyResult.error.message);
+    if (rateResult.error) setError((current) => current ? current + ' · ' + rateResult.error!.message : rateResult.error!.message);
+    const options = (currencyResult.data ?? []) as CurrencyOption[];
+    setCurrencies(options);
+    setRates((rateResult.data ?? []) as RateRow[]);
+    setFromCurrency((current) => current || options[0]?.code || '');
+    setToCurrency((current) => current || options.find((item) => item.code !== (options[0]?.code ?? ''))?.code || '');
+    setLoading(false);
+  }
+
+  async function saveRate() {
+    if (!tenant?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة.' : 'Organization could not be resolved.'); return; }
+    const numericRate = Number(rate);
+    if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) {
+      setError(lang === 'ar' ? 'اختر عملتين مختلفتين.' : 'Choose two different currencies.');
+      return;
+    }
+    if (!rate.trim() || !Number.isFinite(numericRate) || numericRate <= 0) {
+      setError(lang === 'ar' ? 'سعر الصرف يجب أن يكون رقمًا أكبر من صفر.' : 'Exchange rate must be a number greater than zero.');
+      return;
+    }
+    if (!date) { setError(lang === 'ar' ? 'تاريخ سعر الصرف مطلوب.' : 'Exchange-rate date is required.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const { error: insertError } = await supabase.from('exchange_rates').insert({
+        tenant_id: tenant.id,
+        from_currency: fromCurrency,
+        to_currency: toCurrency,
+        rate: numericRate,
+        date,
+        created_by: profile?.id ?? null,
+      });
+      if (insertError) throw insertError;
+      setRate('');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('error.generic'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const currencyLabel = (code: string) => {
+    const item = currencies.find((currency) => currency.code === code);
+    return item ? `${code} — ${lang === 'ar' ? item.name_ar ?? item.name : item.name}` : code;
+  };
+
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h3 className="font-semibold text-[var(--color-text)]">{lang === 'ar' ? 'أسعار الصرف' : 'Exchange rates'}</h3>
+        <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'تُحفظ الأسعار للمؤسسة الحالية فقط، مع تاريخ سريان واضح.' : 'Rates are saved for the current organization with an explicit effective date.'}</p>
+      </div>
+      {error && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300">{error}</div>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div><label className="block text-sm mb-1">{lang === 'ar' ? 'من العملة' : 'From currency'}</label><select value={fromCurrency} onChange={(event) => setFromCurrency(event.target.value)} className="input-field" disabled={loading}><option value="">{lang === 'ar' ? 'اختر' : 'Select'}</option>{currencies.map((currency) => <option key={currency.id} value={currency.code}>{currency.code} — {lang === 'ar' ? currency.name_ar ?? currency.name : currency.name}</option>)}</select></div>
+        <div><label className="block text-sm mb-1">{lang === 'ar' ? 'إلى العملة' : 'To currency'}</label><select value={toCurrency} onChange={(event) => setToCurrency(event.target.value)} className="input-field" disabled={loading}><option value="">{lang === 'ar' ? 'اختر' : 'Select'}</option>{currencies.map((currency) => <option key={currency.id} value={currency.code}>{currency.code} — {lang === 'ar' ? currency.name_ar ?? currency.name : currency.name}</option>)}</select></div>
+        <div><label className="block text-sm mb-1">{lang === 'ar' ? 'سعر الصرف' : 'Rate'}</label><input type="number" min="0" step="any" value={rate} onChange={(event) => setRate(event.target.value)} className="input-field" placeholder="1.00" /></div>
+        <div><label className="block text-sm mb-1">{lang === 'ar' ? 'تاريخ السريان' : 'Effective date'}</label><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input-field" /></div>
+      </div>
+      <div className="flex justify-end"><button type="button" onClick={() => void saveRate()} disabled={saving || loading || currencies.length < 2} className="btn-primary">{saving ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : (lang === 'ar' ? 'حفظ سعر الصرف' : 'Save exchange rate')}</button></div>
+      {loading ? <div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'جارٍ تحميل الأسعار…' : 'Loading rates…'}</div> : rates.length === 0 ? <div className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'لا توجد أسعار صرف مسجلة لهذه المؤسسة.' : 'No exchange rates recorded for this organization.'}</div> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]"><th className="text-start py-2 px-2">{lang === 'ar' ? 'من' : 'From'}</th><th className="text-start py-2 px-2">{lang === 'ar' ? 'إلى' : 'To'}</th><th className="text-end py-2 px-2">{lang === 'ar' ? 'السعر' : 'Rate'}</th><th className="text-end py-2 px-2">{lang === 'ar' ? 'التاريخ' : 'Date'}</th></tr></thead>
+            <tbody>{rates.map((item) => <tr key={item.id} className="border-b border-[var(--color-border)]"><td className="py-2 px-2">{currencyLabel(item.from_currency)}</td><td className="py-2 px-2">{currencyLabel(item.to_currency)}</td><td className="py-2 px-2 text-end font-mono">{Number(item.rate).toLocaleString(undefined, { maximumFractionDigits: 8 })}</td><td className="py-2 px-2 text-end">{item.date}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
