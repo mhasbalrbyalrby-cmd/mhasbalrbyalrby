@@ -147,6 +147,12 @@ begin
     where l.document_id=v_doc.id and l.tenant_id=v_doc.tenant_id
     order by l.product_id for update
   loop
+    -- Serialize stock checks per tenant/product/warehouse to prevent concurrent overselling.
+    perform pg_advisory_xact_lock(hashtext(v_doc.tenant_id::text || ':' || v_line.product_id::text || ':' || v_doc.warehouse_id::text)::bigint);
+    if v_doc.document_type='transfer' then
+      perform pg_advisory_xact_lock(hashtext(v_doc.tenant_id::text || ':' || v_line.product_id::text || ':' || v_doc.to_warehouse_id::text)::bigint);
+    end if;
+
     if not exists (select 1 from public.products p where p.id=v_line.product_id and p.tenant_id=v_doc.tenant_id and p.type='product') then
       return jsonb_build_object('success',false,'error','invalid_product','product_id',v_line.product_id);
     end if;
