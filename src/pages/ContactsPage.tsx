@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
 import type { Party, PartyRole, PartyRoleType } from './database';
 import Modal from '../components/Modal';
+import ContactPickerButton from '../components/ContactPickerButton';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2, Download,
   AlertCircle, User, Building2, CheckCircle2, Download,
@@ -402,64 +403,38 @@ export default function ContactsPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
-                {t('common.name')} *
-              </label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="input-field"
-                required
-              />
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-[var(--color-text-muted)]">
+                  {t('common.name')} *
+                </label>
+                <ContactPickerButton
+                  lang={lang}
+                  onSelect={({ name, phone }) => setForm(current => ({
+                    ...current,
+                    name: name || current.name,
+                    phone: phone || current.phone,
+                  }))}
+                />
+              </div>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="input-field"
+                required
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
-                {lang === 'ar' ? 'الاسم بالعربية' : 'Arabic Name'}
-              </label>
-              <input
-                type="text"
-                value={form.name_ar}
-                onChange={(e) => setForm({ ...form, name_ar: e.target.value })}
-                className="input-field"
-                dir="rtl"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
-              {lang === 'ar' ? 'النوع' : 'Type'}
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setForm({ ...form, type: 'person' })}
-                className={`btn-secondary flex items-center gap-2 ${form.type === 'person' ? '!border-primary-500 !text-primary-600' : ''}`}
-              >
-                <User className="w-4 h-4" />
-                {lang === 'ar' ? 'فرد' : 'Person'}
-              </button>
-              <button
-                onClick={() => setForm({ ...form, type: 'company' })}
-                className={`btn-secondary flex items-center gap-2 ${form.type === 'company' ? '!border-primary-500 !text-primary-600' : ''}`}
-              >
-                <Building2 className="w-4 h-4" />
-                {lang === 'ar' ? 'شركة' : 'Company'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
-                {t('common.phone')}
-              </label>
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="input-field"
-              />
+                {t('common.phone')}
+              </label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className="input-field"
+                autoComplete="tel"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">
