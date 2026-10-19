@@ -143,16 +143,18 @@ export default function InventoryPage() {
         if (e) throw e;
         productId = data.id;
       }
-      if (productId && form.type === 'product' && productUnits.some((u) => u.name.trim())) {
+      if (productId && form.type === 'product') {
+        const namedUnits = productUnits.filter((u) => u.name.trim());
+        if (namedUnits.length && namedUnits.filter((u) => u.is_base).length !== 1) throw new Error(lang === 'ar' ? 'حدد وحدة أساسية واحدة فقط.' : 'Select exactly one base unit.');
         const { data: existingUnits, error: existingError } = await supabase.from('product_units').select('id').eq('tenant_id', tenant.id).eq('product_id', productId);
         if (existingError) throw existingError;
-        const retainedIds = new Set(productUnits.map((u) => u.id).filter(Boolean));
+        const retainedIds = new Set(productUnits.filter((u) => u.name.trim()).map((u) => u.id).filter(Boolean));
         const removeIds = (existingUnits ?? []).map((u) => u.id).filter((id: string) => !retainedIds.has(id));
         if (removeIds.length) {
           const { error: deleteError } = await supabase.from('product_units').delete().eq('tenant_id', tenant.id).eq('product_id', productId).in('id', removeIds);
           if (deleteError) throw deleteError;
         }
-        for (const unit of productUnits.filter((u) => u.name.trim())) {
+        for (const unit of namedUnits) {
           const unitPayload = { tenant_id: tenant.id, product_id: productId, name: unit.name.trim(), name_ar: unit.name_ar.trim() || null, factor: Number(unit.factor), barcode: unit.barcode.trim() || null, is_base: unit.is_base, is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction };
           if (!Number.isFinite(Number(unit.factor)) || Number(unit.factor) <= 0) throw new Error(lang === 'ar' ? 'معامل تحويل الوحدة يجب أن يكون أكبر من صفر.' : 'Unit conversion factor must be greater than zero.');
           const result = unit.id
@@ -362,7 +364,7 @@ export default function InventoryPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكود' : 'Code'}</label><input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="input-field font-mono" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><div className="flex gap-2"><input type="text" inputMode="numeric" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field min-w-0" /><button type="button" onClick={() => setScannerOpen(true)} aria-label={lang === 'ar' ? 'فتح كاميرا قراءة الباركود' : 'Open barcode scanner camera'} className="btn-secondary !px-3 shrink-0" title={lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}><span aria-hidden="true">▦</span><span className="sr-only">{lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}</span></button></div></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label><div className="flex gap-2"><input type="text" inputMode="numeric" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input-field min-w-0" /><button type="button" onClick={() => { setScannerUnitIndex(null); setScannerOpen(true); }} aria-label={lang === 'ar' ? 'فتح كاميرا قراءة الباركود' : 'Open barcode scanner camera'} className="btn-secondary !px-3 shrink-0" title={lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}><span aria-hidden="true">▦</span><span className="sr-only">{lang === 'ar' ? 'قراءة بالكاميرا' : 'Scan with camera'}</span></button></div></div>
           </div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.name')} *</label><input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" required /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الاسم بالعربية' : 'Arabic Name'}</label><input type="text" value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} className="input-field" dir="rtl" /></div>
