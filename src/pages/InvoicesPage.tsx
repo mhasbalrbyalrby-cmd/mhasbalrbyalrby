@@ -520,6 +520,7 @@ export default function InvoicesPage() {
                 <option value="credit">{lang === 'ar' ? 'آجل — ذمم الجهة' : 'Credit — party receivable/payable'}</option>
                 <option value="cash">{lang === 'ar' ? 'نقدي — صندوق' : 'Cash — cash account'}</option>
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختر آجلًا لإثبات ذمة على العميل أو المورد، أو نقديًا إذا تم السداد/القبض من الصندوق الآن.' : 'Choose credit to record a receivable/payable, or cash when payment/collection happens from the cash account now.'}</p>
             </div>
             {form.payment_method === 'cash' && <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حساب الصندوق' : 'Cash account'}</label>
@@ -527,6 +528,7 @@ export default function InvoicesPage() {
                 <option value="">{lang === 'ar' ? 'اختر حساب الصندوق' : 'Select cash account'}</option>
                 {cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {lang === 'ar' ? a.name_ar ?? a.name : a.name}</option>)}
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختر الصندوق الذي استلم أو دفع المبلغ فعليًا.' : 'Choose the cash account that actually received or paid the amount.'}</p>
               {cashAccounts.length === 0 && <p className="mt-1 text-xs text-error-600">{lang === 'ar' ? 'لا يوجد حساب صندوق نشط وقابل للترحيل في دليل الحسابات.' : 'No active postable cash account was found in the chart of accounts.'}</p>}
             </div>}
           </div>
@@ -562,6 +564,7 @@ export default function InvoicesPage() {
                 <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
                 {warehouses.map((w) => <option key={w.id} value={w.id}>{lang === 'ar' ? w.name_ar ?? w.name : w.name}</option>)}
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختر المخزن الذي ستُسجل عليه حركة البضاعة، أو اتركه فارغًا إذا لم ينطبق.' : 'Choose the warehouse for stock activity, or leave blank if not applicable.'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوردية' : 'Shift'}</label>
@@ -569,10 +572,12 @@ export default function InvoicesPage() {
                 <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
                 {shifts.map((s) => <option key={s.id} value={s.id}>{s.start_time.slice(0, 16).replace('T', ' ')}</option>)}
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اربط الفاتورة بالوردية المفتوحة عند تنفيذها ضمن وردية؛ وإلا اتركه فارغًا.' : 'Link the invoice to the open shift if it belongs to one; otherwise leave blank.'}</p>
             </div>
           </div>
 
           <div>
+            <p className="mb-2 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختر منتجًا أو خدمة لملء الوصف والسعر تلقائيًا، أو اختر الإدخال اليدوي واكتب التفاصيل بنفسك.' : 'Choose a product or service to fill description and price, or use manual entry and type the details yourself.'}</p>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-[var(--color-text-muted)]">{lang === 'ar' ? 'سطور الفاتورة' : 'Invoice Lines'}</span>
               <button onClick={addLine} className="btn-secondary text-sm flex items-center gap-1"><Plus className="w-3 h-3" />{lang === 'ar' ? 'سطر' : 'Line'}</button>
