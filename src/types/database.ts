@@ -315,8 +315,8 @@ export interface Product {
   type: ProductType;
   barcode: string | null;
   description: string | null;
-  cost_price: number;
-  sale_price: number;
+  cost_price: number | null;
+  sale_price: number | null;
   min_stock: number;
   unit_id: string | null;
   category: string | null;
