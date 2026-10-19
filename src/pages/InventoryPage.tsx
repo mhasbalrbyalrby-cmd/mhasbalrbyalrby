@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const codeGenerationRequest = useRef(0);
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
@@ -63,15 +64,44 @@ export default function InventoryPage() {
     setLoading(false);
   }
 
+  async function generateNextProductCode(tenantId: string): Promise<string> {
+    const { data, error: codeQueryError } = await supabase
+      .from('products')
+      .select('code')
+      .eq('tenant_id', tenantId)
+      .not('code', 'is', null);
+    if (codeQueryError) throw codeQueryError;
+
+    let highest = 0;
+    for (const row of data ?? []) {
+      const match = typeof row.code === 'string' ? row.code.trim().match(/^P(\\d+)$/i) : null;
+      if (match) highest = Math.max(highest, Number(match[1]));
+    }
+    return `P${String(highest + 1).padStart(3, '0')}`;
+  }
+
   function openCreate() {
+    const requestId = ++codeGenerationRequest.current;
     setEditing(null);
     setForm({ code: '', name: '', name_ar: '', type: 'product', barcode: '', cost_price: '', sale_price: '', min_stock: '0', unit_id: '', category: '' });
     setProductUnits([{ name: '', name_ar: '', factor: '1', barcode: '', is_base: true, is_purchase_unit: true, is_sale_unit: true, allow_fraction: false }]);
     setError('');
     setModalOpen(true);
+    if (tenant?.id) {
+      void generateNextProductCode(tenant.id).then((nextCode) => {
+        if (codeGenerationRequest.current === requestId) {
+          setForm((current) => current.code.trim() ? current : { ...current, code: nextCode });
+        }
+      }).catch((cause) => {
+        if (codeGenerationRequest.current === requestId) {
+          setError(cause instanceof Error ? cause.message : t('error.generic'));
+        }
+      });
+    }
   }
 
   function openEdit(p: Product) {
+    codeGenerationRequest.current += 1;
     setEditing(p);
     setForm({ code: p.code ?? '', name: p.name, name_ar: p.name_ar ?? '', type: p.type, barcode: p.barcode ?? '', cost_price: p.cost_price == null ? '' : String(p.cost_price), sale_price: p.sale_price == null ? '' : String(p.sale_price), min_stock: String(p.min_stock ?? 0), unit_id: p.unit_id ?? '', category: p.category ?? '' });
     void supabase.from('product_units').select('*').eq('tenant_id', tenant?.id ?? '').eq('product_id', p.id).order('created_at').then(({ data, error: unitError }) => {
@@ -132,9 +162,13 @@ export default function InventoryPage() {
     if (new Set(unitBarcodes).size !== unitBarcodes.length) { setError(lang === 'ar' ? 'يوجد باركود مكرر بين وحدات الصنف.' : 'Duplicate barcode among this item’s units.'); return; }
     setSaving(true); setError('');
     try {
+      // If the user left the code empty, generate one immediately before saving.
+      // The code field remains editable; any non-empty manual code is preserved.
+      const productCode = form.code.trim() || await generateNextProductCode(tenant.id);
+      if (!form.code.trim()) setForm((current) => ({ ...current, code: productCode }));
       const payload = {
         tenant_id: tenant.id,
-        code: form.code.trim() || null,
+        code: productCode,
         name: form.name.trim(),
         name_ar: form.name_ar.trim() || null,
         type: form.type,
