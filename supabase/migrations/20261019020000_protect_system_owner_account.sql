@@ -83,6 +83,17 @@ BEGIN
   ) AND OLD.is_primary IS TRUE
   INTO v_is_owner_tenant;
 
+  -- Prevent promoting another membership into a second primary owner membership.
+  IF TG_OP = 'UPDATE' AND NEW.is_primary IS TRUE THEN
+    IF EXISTS (
+      SELECT 1 FROM public.tenants t
+      WHERE t.id = NEW.tenant_id AND t.is_owner IS TRUE
+    ) AND NOT v_is_owner_tenant THEN
+      RAISE EXCEPTION 'A second primary membership cannot be assigned to the System Owner tenant.'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
   IF v_is_owner_tenant THEN
     IF TG_OP = 'DELETE' THEN
       RAISE EXCEPTION 'The primary System Owner membership cannot be deleted.'
@@ -215,3 +226,46 @@ BEFORE UPDATE OR DELETE ON public.profiles
 FOR EACH ROW EXECUTE FUNCTION public.guard_system_owner_profile();
 
 REVOKE ALL ON FUNCTION public.guard_system_owner_profile() FROM PUBLIC;
+
+-- Keep the primary System Owner role's permission grants from being removed or
+-- reassigned through ordinary API operations.
+CREATE OR REPLACE FUNCTION public.guard_system_owner_role_permissions()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.tenant_members tm
+    JOIN public.tenants t ON t.id = tm.tenant_id AND t.is_owner IS TRUE
+    WHERE tm.role_id = OLD.role_id
+      AND tm.is_primary IS TRUE
+      AND tm.status = 'active'
+  ) THEN
+    IF TG_OP = 'DELETE' THEN
+      RAISE EXCEPTION 'Permissions assigned to the primary System Owner role cannot be removed.'
+        USING ERRCODE = '42501';
+    END IF;
+
+    IF NEW.role_id IS DISTINCT FROM OLD.role_id
+       OR NEW.permission_id IS DISTINCT FROM OLD.permission_id THEN
+      RAISE EXCEPTION 'Permissions assigned to the primary System Owner role cannot be reassigned.'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_guard_system_owner_role_permissions ON public.role_permissions;
+CREATE TRIGGER trg_guard_system_owner_role_permissions
+BEFORE UPDATE OR DELETE ON public.role_permissions
+FOR EACH ROW EXECUTE FUNCTION public.guard_system_owner_role_permissions();
+
+REVOKE ALL ON FUNCTION public.guard_system_owner_role_permissions() FROM PUBLIC;
