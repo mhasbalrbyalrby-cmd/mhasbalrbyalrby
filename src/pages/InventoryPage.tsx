@@ -16,6 +16,8 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
+  type ProductUnitRow = { id?: string; name: string; name_ar: string; factor: string; barcode: string; is_base: boolean; is_purchase_unit: boolean; is_sale_unit: boolean; allow_fraction: boolean };
+  const [productUnits, setProductUnits] = useState<ProductUnitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -34,7 +36,7 @@ export default function InventoryPage() {
 
   const [form, setForm] = useState({
     code: '', name: '', name_ar: '', type: 'product' as 'product' | 'service',
-    barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '',
+    barcode: '', cost_price: '', sale_price: '', min_stock: '0', unit_id: '', category: '',
   });
 
   useEffect(() => { void loadData(); }, [tenant?.id]);
@@ -62,14 +64,19 @@ export default function InventoryPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ code: '', name: '', name_ar: '', type: 'product', barcode: '', cost_price: 0, sale_price: 0, min_stock: 0, unit_id: '', category: '' });
+    setForm({ code: '', name: '', name_ar: '', type: 'product', barcode: '', cost_price: '', sale_price: '', min_stock: '0', unit_id: '', category: '' });
+    setProductUnits([{ name: '', name_ar: '', factor: '1', barcode: '', is_base: true, is_purchase_unit: true, is_sale_unit: true, allow_fraction: false }]);
     setError('');
     setModalOpen(true);
   }
 
   function openEdit(p: Product) {
     setEditing(p);
-    setForm({ code: p.code ?? '', name: p.name, name_ar: p.name_ar ?? '', type: p.type, barcode: p.barcode ?? '', cost_price: p.cost_price, sale_price: p.sale_price, min_stock: p.min_stock, unit_id: p.unit_id ?? '', category: p.category ?? '' });
+    setForm({ code: p.code ?? '', name: p.name, name_ar: p.name_ar ?? '', type: p.type, barcode: p.barcode ?? '', cost_price: p.cost_price == null ? '' : String(p.cost_price), sale_price: p.sale_price == null ? '' : String(p.sale_price), min_stock: String(p.min_stock ?? 0), unit_id: p.unit_id ?? '', category: p.category ?? '' });
+    void supabase.from('product_units').select('*').eq('tenant_id', tenant?.id ?? '').eq('product_id', p.id).order('created_at').then(({ data, error: unitError }) => {
+      if (unitError) { setError(unitError.message); return; }
+      setProductUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.name, name_ar: u.name_ar ?? '', factor: String(u.factor), barcode: u.barcode ?? '', is_base: u.is_base, is_purchase_unit: u.is_purchase_unit, is_sale_unit: u.is_sale_unit, allow_fraction: u.allow_fraction })));
+    });
     setError('');
     setModalOpen(true);
   }
@@ -119,22 +126,42 @@ export default function InventoryPage() {
         name_ar: form.name_ar.trim() || null,
         type: form.type,
         barcode: form.barcode.trim() || null,
-        cost_price: Number(form.cost_price) || 0,
-        sale_price: Number(form.sale_price) || 0,
-        min_stock: Number(form.min_stock) || 0,
+        cost_price: form.cost_price.trim() === '' ? null : Number(form.cost_price),
+        sale_price: form.sale_price.trim() === '' ? null : Number(form.sale_price),
+        min_stock: form.min_stock.trim() === '' ? 0 : Number(form.min_stock),
         unit_id: form.unit_id || null,
         category: form.category.trim() || null,
         is_active: true,
       };
+      let productId = editing?.id;
       if (editing) {
-        const { error: e } = await supabase.from('products').update(payload).eq('id', editing.id);
+        const { error: e } = await supabase.from('products').update(payload).eq('id', editing.id).eq('tenant_id', tenant.id);
         if (e) throw e;
       } else {
-        const { error: e } = await supabase.from('products').insert({ ...payload, created_by: profile.id });
+        const { data, error: e } = await supabase.from('products').insert({ ...payload, created_by: profile.id }).select('id').single();
         if (e) throw e;
+        productId = data.id;
+      }
+      if (productId && form.type === 'product' && productUnits.some((u) => u.name.trim())) {
+        const { data: existingUnits, error: existingError } = await supabase.from('product_units').select('id').eq('tenant_id', tenant.id).eq('product_id', productId);
+        if (existingError) throw existingError;
+        const retainedIds = new Set(productUnits.map((u) => u.id).filter(Boolean));
+        const removeIds = (existingUnits ?? []).map((u) => u.id).filter((id: string) => !retainedIds.has(id));
+        if (removeIds.length) {
+          const { error: deleteError } = await supabase.from('product_units').delete().eq('tenant_id', tenant.id).eq('product_id', productId).in('id', removeIds);
+          if (deleteError) throw deleteError;
+        }
+        for (const unit of productUnits.filter((u) => u.name.trim())) {
+          const unitPayload = { tenant_id: tenant.id, product_id: productId, name: unit.name.trim(), name_ar: unit.name_ar.trim() || null, factor: Number(unit.factor), barcode: unit.barcode.trim() || null, is_base: unit.is_base, is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction };
+          if (!Number.isFinite(Number(unit.factor)) || Number(unit.factor) <= 0) throw new Error(lang === 'ar' ? 'معامل تحويل الوحدة يجب أن يكون أكبر من صفر.' : 'Unit conversion factor must be greater than zero.');
+          const result = unit.id
+            ? await supabase.from('product_units').update(unitPayload).eq('tenant_id', tenant.id).eq('product_id', productId).eq('id', unit.id)
+            : await supabase.from('product_units').insert(unitPayload);
+          if (result.error) throw result.error;
+        }
       }
       setModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally { setSaving(false); }
@@ -318,8 +345,8 @@ export default function InventoryPage() {
                   <td className="py-2 px-3 font-mono text-[var(--color-text)]">{p.code ?? '—'}</td>
                   <td className="py-2 px-3"><div className="font-medium text-[var(--color-text)]">{lang === 'ar' ? p.name_ar ?? p.name : p.name}</div>{p.barcode && <div className="text-xs text-[var(--color-text-muted)]">{p.barcode}</div>}</td>
                   <td className="py-2 px-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.type === 'product' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-secondary-100 text-secondary-700 dark:bg-secondary-900/30 dark:text-secondary-400'}`}>{p.type === 'product' ? (lang === 'ar' ? 'منتج' : 'Product') : (lang === 'ar' ? 'خدمة' : 'Service')}</span></td>
-                  <td className="py-2 px-3 text-end text-[var(--color-text-muted)]">{p.cost_price.toFixed(2)}</td>
-                  <td className="py-2 px-3 text-end font-medium text-[var(--color-text)]">{p.sale_price.toFixed(2)}</td>
+                  <td className="py-2 px-3 text-end text-[var(--color-text-muted)]">{p.cost_price == null ? '—' : Number(p.cost_price).toFixed(2)}</td>
+                  <td className="py-2 px-3 text-end font-medium text-[var(--color-text)]">{p.sale_price == null ? '—' : Number(p.sale_price).toFixed(2)}</td>
                   <td className="py-2 px-3 text-end"><div className="flex gap-1 justify-end"><button type="button" onClick={() => openEdit(p)} aria-label={lang === 'ar' ? `تعديل الصنف ${p.name_ar ?? p.name}` : `Edit item ${p.name}`} className="btn-secondary !p-1.5"><Pencil className="w-3.5 h-3.5" /></button><button type="button" onClick={() => handleDelete(p)} aria-label={lang === 'ar' ? `حذف الصنف ${p.name_ar ?? p.name}` : `Delete item ${p.name}`} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button></div></td>
                 </tr>
               ))}
@@ -343,9 +370,9 @@ export default function InventoryPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'التصنيف' : 'Category'}</label><input type="text" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-field" /></div>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'التكلفة' : 'Cost'}</label><input type="number" step="0.01" value={form.cost_price || ''} onChange={(e) => setForm({ ...form, cost_price: Number(e.target.value) })} className="input-field" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'السعر' : 'Price'}</label><input type="number" step="0.01" value={form.sale_price || ''} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) })} className="input-field" /></div>
-            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حد أدنى' : 'Min Stock'}</label><input type="number" step="0.01" value={form.min_stock || ''} onChange={(e) => setForm({ ...form, min_stock: Number(e.target.value) })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'التكلفة' : 'Cost'}</label><input type="number" step="0.01" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'السعر' : 'Price'}</label><input type="number" step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'حد أدنى' : 'Min Stock'}</label><input type="number" step="0.01" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} className="input-field" /></div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوحدة' : 'Unit'}</label>
@@ -369,6 +396,15 @@ export default function InventoryPage() {
                 </div>
               </div>
             )}
+          </div>
+          <div className="rounded-lg border border-[var(--color-border)] p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{lang === 'ar' ? 'وحدات وعبوات الصنف' : 'Item units and packages'}</h3><button type="button" onClick={() => setProductUnits((rows) => [...rows, { name: '', name_ar: '', factor: '1', barcode: '', is_base: false, is_purchase_unit: true, is_sale_unit: true, allow_fraction: false }])} className="btn-secondary">{lang === 'ar' ? 'إضافة عبوة/وحدة' : 'Add unit/package'}</button></div>
+            {productUnits.map((unit, index) => <div key={unit.id ?? `new-${index}`} className="rounded border border-[var(--color-border)] p-3 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><input value={unit.name} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, name: e.target.value } : r))} placeholder={lang === 'ar' ? 'اسم الوحدة (مثل حبة/كرتون)' : 'Unit name (piece/carton)'} className="input-field" /><input value={unit.name_ar} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, name_ar: e.target.value } : r))} placeholder={lang === 'ar' ? 'الاسم العربي (اختياري)' : 'Arabic name (optional)'} className="input-field" dir="rtl" /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><input type="number" min="0.000001" step="any" value={unit.factor} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, factor: e.target.value } : r))} placeholder={lang === 'ar' ? 'معامل التحويل' : 'Conversion factor'} className="input-field" /><div className="flex gap-2"><input value={unit.barcode} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, barcode: e.target.value } : r))} placeholder={lang === 'ar' ? 'باركود العبوة' : 'Package barcode'} className="input-field min-w-0" /><button type="button" onClick={() => setScannerOpen(true)} aria-label={lang === 'ar' ? 'مسح باركود العبوة' : 'Scan package barcode'} className="btn-secondary shrink-0">▦</button></div></div>
+              <div className="flex flex-wrap gap-3 text-sm">{([['is_base', lang === 'ar' ? 'وحدة أساسية' : 'Base unit'], ['is_purchase_unit', lang === 'ar' ? 'تستخدم في الشراء' : 'Purchase unit'], ['is_sale_unit', lang === 'ar' ? 'تستخدم في البيع' : 'Sale unit'], ['allow_fraction', lang === 'ar' ? 'السماح بالكسور' : 'Allow fractions']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-1"><input type="checkbox" checked={unit[key]} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, [key]: e.target.checked } : r))} />{label}</label>)}<button type="button" onClick={() => setProductUnits((rows) => rows.filter((_, i) => i !== index))} className="text-error-500">{lang === 'ar' ? 'إزالة' : 'Remove'}</button></div>
+            </div>)}
+            <p className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اترك الأسعار فارغة إذا لم تكن محددة. معاملات التحويل موجبة، والباركود يمكن أن يختلف لكل عبوة.' : 'Leave prices blank when unknown. Conversion factors must be positive; each package may have its own barcode.'}</p>
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
         </div>
