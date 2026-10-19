@@ -100,7 +100,7 @@ export default function InvoicesPage() {
       const prod = products.find((p) => p.id === value);
       if (prod) {
         newLines[idx].description = lang === 'ar' ? prod.name_ar ?? prod.name : prod.name;
-        newLines[idx].unit_price = form.type === 'sale' || form.type === 'return_sale' ? prod.sale_price : prod.cost_price;
+        newLines[idx].unit_price = Number((form.type === 'sale' || form.type === 'return_sale' ? prod.sale_price : prod.cost_price) ?? 0);
       }
     }
     setForm({ ...form, lines: newLines });
