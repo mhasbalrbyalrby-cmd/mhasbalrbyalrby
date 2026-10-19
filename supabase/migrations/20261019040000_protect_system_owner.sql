@@ -117,3 +117,40 @@ for each row execute function public.guard_system_owner_profile();
 
 revoke all on function public.guard_system_owner_membership() from public, anon, authenticated;
 revoke all on function public.guard_system_owner_profile() from public, anon, authenticated;
+
+
+-- Protect the System Owner tenant itself from deletion, ownership-flag changes,
+-- or suspension/cancellation that could disable the administrative account.
+create or replace function public.guard_system_owner_tenant()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    if coalesce(old.is_owner, false) then
+      raise exception 'The System Owner tenant cannot be deleted.'
+        using errcode = '42501';
+    end if;
+    return old;
+  end if;
+
+  if coalesce(old.is_owner, false) then
+    if new.id is distinct from old.id
+       or new.is_owner is distinct from old.is_owner
+       or new.status is distinct from old.status then
+      raise exception 'The System Owner tenant identity, ownership flag, and status are protected.'
+        using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_system_owner_tenant on public.tenants;
+create trigger guard_system_owner_tenant
+before update or delete on public.tenants
+for each row execute function public.guard_system_owner_tenant();
+
+revoke all on function public.guard_system_owner_tenant() from public, anon, authenticated;
