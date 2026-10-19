@@ -67,10 +67,39 @@ export default function SettingsPage() {
           ? 'لم تؤكد قاعدة البيانات حفظ بيانات المؤسسة.'
           : 'The database did not confirm that company settings were saved.');
       }
+      // Read the row back from Supabase before reporting success. The RPC return
+      // confirms the write path ran; this read-back verifies the persisted values.
+      const { data: persistedTenant, error: verifyError } = await supabase
+        .from('tenants')
+        .select('id, name, name_ar, settings')
+        .eq('id', tenant.id)
+        .maybeSingle();
+
+      if (verifyError) throw verifyError;
+      if (!persistedTenant) {
+        throw new Error(lang === 'ar'
+          ? 'تم تنفيذ طلب الحفظ لكن تعذّر التحقق من بيانات المؤسسة المحفوظة. أعد تحميل الصفحة وتحقق من صلاحيات القراءة.'
+          : 'The save request ran, but the persisted company row could not be verified. Reload and check read permissions.');
+      }
+
+      const persistedSettings = (persistedTenant.settings ?? {}) as Record<string, unknown>;
+      const valuesMatch =
+        persistedTenant.name === name &&
+        (persistedTenant.name_ar ?? null) === (companyForm.name_ar.trim() || null) &&
+        persistedSettings.phone === companyForm.phone &&
+        persistedSettings.address === companyForm.address &&
+        persistedSettings.base_currency === companyForm.base_currency;
+
+      if (!valuesMatch) {
+        throw new Error(lang === 'ar'
+          ? 'لم تتطابق القيم المقروءة من قاعدة البيانات مع القيم المطلوبة؛ لم يتم تأكيد الحفظ.'
+          : 'The values read back from the database do not match the requested values; save was not confirmed.');
+      }
+
       await refreshProfile();
       setSuccess(lang === 'ar'
-        ? 'تم حفظ بيانات المؤسسة والتحقق من قاعدة البيانات.'
-        : 'Company settings saved and confirmed by the database.');
+        ? 'تم حفظ بيانات المؤسسة وإعادة قراءتها بنجاح من قاعدة البيانات.'
+        : 'Company settings were saved and read back successfully from the database.');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error.generic'));
     } finally {
