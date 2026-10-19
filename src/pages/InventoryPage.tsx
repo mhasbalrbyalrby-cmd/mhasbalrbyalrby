@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
 import { parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
+import StockMovementsPage from '@/pages/StockMovementsPage';
 import {
   Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ export default function InventoryPage() {
   type ProductUnitRow = { id?: string; name: string; name_ar: string; factor: string; barcode: string; is_base: boolean; is_purchase_unit: boolean; is_sale_unit: boolean; allow_fraction: boolean };
   const [productUnits, setProductUnits] = useState<ProductUnitRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [inventoryView, setInventoryView] = useState<'products' | 'movements'>('products');
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -332,8 +334,22 @@ export default function InventoryPage() {
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-[var(--color-text-muted)]" /></div>;
 
+  if (inventoryView === 'movements') {
+    return <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" className="btn-secondary" onClick={() => setInventoryView('products')}>{lang === 'ar' ? 'المنتجات والمخازن' : 'Products & warehouses'}</button>
+        <button type="button" className="btn-primary">{lang === 'ar' ? 'حركات المخزون' : 'Stock movements'}</button>
+      </div>
+      <StockMovementsPage />
+    </div>;
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" className="btn-primary">{lang === 'ar' ? 'المنتجات والمخازن' : 'Products & warehouses'}</button>
+        <button type="button" className="btn-secondary" onClick={() => setInventoryView('movements')}>{lang === 'ar' ? 'حركات المخزون' : 'Stock movements'}</button>
+      </div>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center"><Package className="w-5 h-5 text-white" /></div>
