@@ -118,6 +118,11 @@ export default function InventoryPage() {
   async function handleSave() {
     if (!form.name.trim()) { setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required'); return; }
     if (!tenant?.id || !profile?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة أو المستخدم الحالي.' : 'The current organization or user could not be resolved.'); return; }
+    const namedUnitsBeforeSave = form.type === 'product' ? productUnits.filter((u) => u.name.trim()) : [];
+    if (namedUnitsBeforeSave.length && namedUnitsBeforeSave.filter((u) => u.is_base).length !== 1) { setError(lang === 'ar' ? 'حدد وحدة أساسية واحدة فقط.' : 'Select exactly one base unit.'); return; }
+    if (namedUnitsBeforeSave.some((u) => !Number.isFinite(Number(u.factor)) || Number(u.factor) <= 0)) { setError(lang === 'ar' ? 'معامل تحويل الوحدة يجب أن يكون أكبر من صفر.' : 'Unit conversion factor must be greater than zero.'); return; }
+    const unitBarcodes = namedUnitsBeforeSave.map((u) => u.barcode.trim()).filter(Boolean);
+    if (new Set(unitBarcodes).size !== unitBarcodes.length) { setError(lang === 'ar' ? 'يوجد باركود مكرر بين وحدات الصنف.' : 'Duplicate barcode among this item’s units.'); return; }
     setSaving(true); setError('');
     try {
       const payload = {
@@ -144,8 +149,7 @@ export default function InventoryPage() {
         productId = data.id;
       }
       if (productId && form.type === 'product') {
-        const namedUnits = productUnits.filter((u) => u.name.trim());
-        if (namedUnits.length && namedUnits.filter((u) => u.is_base).length !== 1) throw new Error(lang === 'ar' ? 'حدد وحدة أساسية واحدة فقط.' : 'Select exactly one base unit.');
+        const namedUnits = namedUnitsBeforeSave;
         const { data: existingUnits, error: existingError } = await supabase.from('product_units').select('id').eq('tenant_id', tenant.id).eq('product_id', productId);
         if (existingError) throw existingError;
         const retainedIds = new Set(productUnits.filter((u) => u.name.trim()).map((u) => u.id).filter(Boolean));
@@ -156,7 +160,6 @@ export default function InventoryPage() {
         }
         for (const unit of namedUnits) {
           const unitPayload = { tenant_id: tenant.id, product_id: productId, name: unit.name.trim(), name_ar: unit.name_ar.trim() || null, factor: Number(unit.factor), barcode: unit.barcode.trim() || null, is_base: unit.is_base, is_purchase_unit: unit.is_purchase_unit, is_sale_unit: unit.is_sale_unit, allow_fraction: unit.allow_fraction };
-          if (!Number.isFinite(Number(unit.factor)) || Number(unit.factor) <= 0) throw new Error(lang === 'ar' ? 'معامل تحويل الوحدة يجب أن يكون أكبر من صفر.' : 'Unit conversion factor must be greater than zero.');
           const result = unit.id
             ? await supabase.from('product_units').update(unitPayload).eq('tenant_id', tenant.id).eq('product_id', productId).eq('id', unit.id)
             : await supabase.from('product_units').insert(unitPayload);
