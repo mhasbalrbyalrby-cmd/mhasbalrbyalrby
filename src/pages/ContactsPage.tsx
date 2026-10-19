@@ -6,7 +6,7 @@ import type { Party, PartyRole, PartyRoleType } from './database';
 import Modal from '../components/Modal';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2, Download,
-  AlertCircle, User, Building2, CheckCircle2,
+  AlertCircle, User, Building2, CheckCircle2, Download,
 } from 'lucide-react';
 
 export default function ContactsPage() {
@@ -189,6 +189,38 @@ export default function ContactsPage() {
     if (!error) await loadParties();
   }
 
+  function exportContactsCsv() {
+    const headers = lang === 'ar'
+      ? ['الاسم', 'الاسم بالعربية', 'النوع', 'الهاتف', 'البريد الإلكتروني', 'العنوان', 'المدينة', 'رقم الهوية', 'الأدوار', 'ملاحظات']
+      : ['name', 'name_ar', 'type', 'phone', 'email', 'address', 'city', 'id_number', 'roles', 'notes'];
+    const escapeCsv = (value: unknown) => {
+      const textValue = String(value ?? '');
+      return /[",\\r\\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
+    };
+    const rows = filtered.map((party) => [
+      party.name,
+      party.name_ar ?? '',
+      party.type,
+      party.phone ?? '',
+      party.email ?? '',
+      party.address ?? '',
+      party.city ?? '',
+      party.id_number ?? '',
+      (partyRoles[party.id] ?? []).map((role) => role.role).join('|'),
+      party.notes ?? '',
+    ]);
+    const csv = '\\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\\r\\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contacts-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const filtered = parties.filter((p) => {
     const matchSearch = !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -252,10 +284,16 @@ export default function ContactsPage() {
         }} disabled={parties.length === 0} className="btn-secondary flex items-center gap-2">
           <Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
         </button>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" />
-          {t('common.create')}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={exportContactsCsv} disabled={filtered.length === 0} className="btn-secondary flex items-center gap-2 disabled:opacity-50">
+            <Download className="w-4 h-4" />
+            {lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
+          </button>
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            {t('common.create')}
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
