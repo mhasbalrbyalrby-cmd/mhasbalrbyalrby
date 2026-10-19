@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import ContactPickerButton from '../components/ContactPickerButton';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2, Download,
-  AlertCircle, User, Building2, CheckCircle2, Download,
+  AlertCircle, User, Building2, CheckCircle2,
 } from 'lucide-react';
 
 export default function ContactsPage() {
