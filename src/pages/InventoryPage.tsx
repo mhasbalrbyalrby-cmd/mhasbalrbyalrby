@@ -139,8 +139,10 @@ export default function InventoryPage() {
         name_ar: form.name_ar.trim() || null,
         type: form.type,
         barcode: form.barcode.trim() || null,
-        cost_price: form.cost_price.trim() === '' ? null : Number(form.cost_price),
-        sale_price: form.sale_price.trim() === '' ? null : Number(form.sale_price),
+        // Production schema currently declares both price columns NOT NULL with DEFAULT 0.
+        // Keep blank UI fields compatible without changing the live database schema.
+        cost_price: form.cost_price.trim() === '' ? 0 : Number(form.cost_price),
+        sale_price: form.sale_price.trim() === '' ? 0 : Number(form.sale_price),
         min_stock: form.min_stock.trim() === '' ? 0 : Number(form.min_stock),
         unit_id: form.unit_id || null,
         category: form.category.trim() || null,
@@ -238,8 +240,9 @@ export default function InventoryPage() {
         name_ar: row.name_ar?.trim() || null,
         type: (row.type?.trim().toLowerCase() === 'service' ? 'service' : 'product') as 'product' | 'service',
         barcode: row.barcode?.trim() || null,
-        cost_price: row.cost_price?.trim() ? Number(row.cost_price) : null,
-        sale_price: row.sale_price?.trim() ? Number(row.sale_price) : null,
+        // Blank CSV prices must match the production NOT NULL schema; treat unknown as 0.
+        cost_price: row.cost_price?.trim() ? Number(row.cost_price) : 0,
+        sale_price: row.sale_price?.trim() ? Number(row.sale_price) : 0,
         min_stock: Number(row.min_stock || 0),
         unit_id: unitByName.get((row.unit ?? '').trim().toLowerCase()) ?? null,
         category: row.category?.trim() || null,
