@@ -70,8 +70,8 @@ BEGIN
       WHERE t.id = NEW.tenant_id AND t.is_owner IS TRUE
     ) INTO v_is_owner_tenant;
 
-    IF v_is_owner_tenant THEN
-      RAISE EXCEPTION 'New memberships cannot be added to the protected System Owner tenant.'
+    IF v_is_owner_tenant AND NEW.is_primary IS TRUE THEN
+      RAISE EXCEPTION 'A second primary membership cannot be assigned to the protected System Owner tenant.'
         USING ERRCODE = '42501';
     END IF;
     RETURN NEW;
@@ -165,3 +165,53 @@ FOR EACH ROW EXECUTE FUNCTION public.guard_system_owner_role();
 REVOKE ALL ON FUNCTION public.guard_system_owner_tenant() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.guard_system_owner_membership() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.guard_system_owner_role() FROM PUBLIC;
+
+-- Protect the profile linked to the active primary membership of the System Owner.
+-- Display/contact fields remain editable; identity, tenant association, active state,
+-- and deletion are not available through ordinary profile operations.
+CREATE OR REPLACE FUNCTION public.guard_system_owner_profile()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+DECLARE
+  v_is_primary_system_owner boolean := false;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.tenant_members tm
+    JOIN public.tenants t ON t.id = tm.tenant_id
+    WHERE tm.user_id = OLD.id
+      AND tm.is_primary IS TRUE
+      AND tm.status = 'active'
+      AND t.is_owner IS TRUE
+  ) INTO v_is_primary_system_owner;
+
+  IF v_is_primary_system_owner THEN
+    IF TG_OP = 'DELETE' THEN
+      RAISE EXCEPTION 'The primary System Owner profile cannot be deleted.'
+        USING ERRCODE = '42501';
+    END IF;
+
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+       OR NEW.is_active IS DISTINCT FROM OLD.is_active THEN
+      RAISE EXCEPTION 'The primary System Owner profile identity, tenant, and active status are protected.'
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_guard_system_owner_profile ON public.profiles;
+CREATE TRIGGER trg_guard_system_owner_profile
+BEFORE UPDATE OR DELETE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.guard_system_owner_profile();
+
+REVOKE ALL ON FUNCTION public.guard_system_owner_profile() FROM PUBLIC;
