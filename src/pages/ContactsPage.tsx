@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import type { Party, PartyRole, PartyRoleType } from './database';
 import Modal from '../components/Modal';
 import {
-  Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2,
+  Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2, Download,
   AlertCircle, User, Building2, CheckCircle2,
 } from 'lucide-react';
 
@@ -237,6 +237,21 @@ export default function ContactsPage() {
             </p>
           </div>
         </div>
+        <button type="button" onClick={() => {
+          const rows = parties.map((p) => ({
+            name: p.name, name_ar: p.name_ar ?? '', type: p.type, phone: p.phone ?? '',
+            email: p.email ?? '', address: p.address ?? '', city: p.city ?? '',
+            id_number: p.id_number ?? '', notes: p.notes ?? '',
+            roles: (partyRoles[p.id] ?? []).map((r) => r.role).join('|'),
+          }));
+          const headers = ['name','name_ar','type','phone','email','address','city','id_number','notes','roles'];
+          const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\\r\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+          const blob = new Blob(['\\uFEFF' + [headers, ...rows.map((row) => headers.map((h) => (row as Record<string,string>)[h] ?? ''))].map((row) => row.map(esc).join(',')).join('\\r\\n')], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        }} disabled={parties.length === 0} className="btn-secondary flex items-center gap-2">
+          <Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
+        </button>
         <button onClick={openCreate} className="btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" />
           {t('common.create')}
