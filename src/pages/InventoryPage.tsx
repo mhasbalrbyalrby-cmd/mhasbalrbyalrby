@@ -25,6 +25,7 @@ export default function InventoryPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerUnitIndex, setScannerUnitIndex] = useState<number | null>(null);
   const [showUnitCreate, setShowUnitCreate] = useState(false);
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitNameAr, setNewUnitNameAr] = useState('');
@@ -225,8 +226,8 @@ export default function InventoryPage() {
         name_ar: row.name_ar?.trim() || null,
         type: (row.type?.trim().toLowerCase() === 'service' ? 'service' : 'product') as 'product' | 'service',
         barcode: row.barcode?.trim() || null,
-        cost_price: Number(row.cost_price || 0),
-        sale_price: Number(row.sale_price || 0),
+        cost_price: row.cost_price?.trim() ? Number(row.cost_price) : null,
+        sale_price: row.sale_price?.trim() ? Number(row.sale_price) : null,
         min_stock: Number(row.min_stock || 0),
         unit_id: unitByName.get((row.unit ?? '').trim().toLowerCase()) ?? null,
         category: row.category?.trim() || null,
@@ -356,7 +357,7 @@ export default function InventoryPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('common.edit') : lang === 'ar' ? 'صنف جديد' : 'New Item'}>
-        {scannerOpen && <div className="mb-4"><BarcodeScanner lang={lang} onDetected={(value) => { setForm((current) => ({ ...current, barcode: value })); setScannerOpen(false); }} onClose={() => setScannerOpen(false)} /></div>}
+        {scannerOpen && <div className="mb-4"><BarcodeScanner lang={lang} onDetected={(value) => { if (scannerUnitIndex === null) setForm((current) => ({ ...current, barcode: value })); else setProductUnits((rows) => rows.map((row, index) => index === scannerUnitIndex ? { ...row, barcode: value } : row)); setScannerUnitIndex(null); setScannerOpen(false); }} onClose={() => setScannerOpen(false)} /></div>}
         {error && <div className="flex items-center gap-2 bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm rounded-lg px-3 py-2 mb-4"><AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span></div>}
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -401,7 +402,7 @@ export default function InventoryPage() {
             <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">{lang === 'ar' ? 'وحدات وعبوات الصنف' : 'Item units and packages'}</h3><button type="button" onClick={() => setProductUnits((rows) => [...rows, { name: '', name_ar: '', factor: '1', barcode: '', is_base: false, is_purchase_unit: true, is_sale_unit: true, allow_fraction: false }])} className="btn-secondary">{lang === 'ar' ? 'إضافة عبوة/وحدة' : 'Add unit/package'}</button></div>
             {productUnits.map((unit, index) => <div key={unit.id ?? `new-${index}`} className="rounded border border-[var(--color-border)] p-3 space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><input value={unit.name} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, name: e.target.value } : r))} placeholder={lang === 'ar' ? 'اسم الوحدة (مثل حبة/كرتون)' : 'Unit name (piece/carton)'} className="input-field" /><input value={unit.name_ar} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, name_ar: e.target.value } : r))} placeholder={lang === 'ar' ? 'الاسم العربي (اختياري)' : 'Arabic name (optional)'} className="input-field" dir="rtl" /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><input type="number" min="0.000001" step="any" value={unit.factor} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, factor: e.target.value } : r))} placeholder={lang === 'ar' ? 'معامل التحويل' : 'Conversion factor'} className="input-field" /><div className="flex gap-2"><input value={unit.barcode} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, barcode: e.target.value } : r))} placeholder={lang === 'ar' ? 'باركود العبوة' : 'Package barcode'} className="input-field min-w-0" /><button type="button" onClick={() => setScannerOpen(true)} aria-label={lang === 'ar' ? 'مسح باركود العبوة' : 'Scan package barcode'} className="btn-secondary shrink-0">▦</button></div></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><input type="number" min="0.000001" step="any" value={unit.factor} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, factor: e.target.value } : r))} placeholder={lang === 'ar' ? 'معامل التحويل' : 'Conversion factor'} className="input-field" /><div className="flex gap-2"><input value={unit.barcode} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, barcode: e.target.value } : r))} placeholder={lang === 'ar' ? 'باركود العبوة' : 'Package barcode'} className="input-field min-w-0" /><button type="button" onClick={() => { setScannerUnitIndex(index); setScannerOpen(true); }} aria-label={lang === 'ar' ? 'مسح باركود العبوة' : 'Scan package barcode'} className="btn-secondary shrink-0">▦</button></div></div>
               <div className="flex flex-wrap gap-3 text-sm">{([['is_base', lang === 'ar' ? 'وحدة أساسية' : 'Base unit'], ['is_purchase_unit', lang === 'ar' ? 'تستخدم في الشراء' : 'Purchase unit'], ['is_sale_unit', lang === 'ar' ? 'تستخدم في البيع' : 'Sale unit'], ['allow_fraction', lang === 'ar' ? 'السماح بالكسور' : 'Allow fractions']] as const).map(([key, label]) => <label key={key} className="flex items-center gap-1"><input type="checkbox" checked={unit[key]} onChange={(e) => setProductUnits((rows) => rows.map((r, i) => i === index ? { ...r, [key]: e.target.checked } : r))} />{label}</label>)}<button type="button" onClick={() => setProductUnits((rows) => rows.filter((_, i) => i !== index))} className="text-error-500">{lang === 'ar' ? 'إزالة' : 'Remove'}</button></div>
             </div>)}
             <p className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اترك الأسعار فارغة إذا لم تكن محددة. معاملات التحويل موجبة، والباركود يمكن أن يختلف لكل عبوة.' : 'Leave prices blank when unknown. Conversion factors must be positive; each package may have its own barcode.'}</p>
