@@ -36,30 +36,47 @@ export default function SettingsPage() {
     }
   }, [tenant]);
 
-  async function saveCompany() {
-    if (!tenant) {
-      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية. لم يتم حفظ التغييرات.' : 'The current organization could not be resolved. Changes were not saved.');
-      return;
-    }
-    setSaving(true); setError(''); setSuccess('');
-    try {
-      const { data: savedTenant, error: e } = await supabase.from('tenants').update({
-        name: companyForm.name.trim(),
-        name_ar: companyForm.name_ar.trim() || null,
-        settings: { ...tenant.settings, phone: companyForm.phone, address: companyForm.address, base_currency: companyForm.base_currency },
-      }).eq('id', tenant.id).select('id').maybeSingle();
-      if (e) throw e;
-      if (!savedTenant) {
-        throw new Error(lang === 'ar'
-          ? 'لم تُحفظ البيانات: لا توجد صلاحية تحديث للمؤسسة الحالية أو لم يُطابق السجل.'
-          : 'Nothing was saved: the current organization update was not authorized or no row matched.');
-      }
-      await refreshProfile();
-      setSuccess(lang === 'ar' ? 'تم الحفظ والتحقق من قاعدة البيانات بنجاح' : 'Saved and confirmed in the database');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('error.generic'));
-    } finally { setSaving(false); }
-  }
+  async function saveCompany() {
+    if (!tenant) {
+      setError(lang === 'ar' ? 'تعذر تحديد المؤسسة الحالية. لم يتم حفظ التغييرات.' : 'The current organization could not be resolved. Changes were not saved.');
+      return;
+    }
+    const name = companyForm.name.trim();
+    if (!name) {
+      setError(lang === 'ar' ? 'اسم الشركة مطلوب.' : 'Company name is required.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { data: savedCompany, error: saveError } = await supabase.rpc(
+        'update_current_tenant_company_settings',
+        {
+          p_tenant_id: tenant.id,
+          p_name: name,
+          p_name_ar: companyForm.name_ar.trim() || null,
+          p_phone: companyForm.phone,
+          p_address: companyForm.address,
+          p_base_currency: companyForm.base_currency,
+        }
+      );
+      if (saveError) throw saveError;
+      if (!savedCompany || typeof savedCompany !== 'object' || !('id' in savedCompany)) {
+        throw new Error(lang === 'ar'
+          ? 'لم تؤكد قاعدة البيانات حفظ بيانات المؤسسة.'
+          : 'The database did not confirm that company settings were saved.');
+      }
+      await refreshProfile();
+      setSuccess(lang === 'ar'
+        ? 'تم حفظ بيانات المؤسسة والتحقق من قاعدة البيانات.'
+        : 'Company settings saved and confirmed by the database.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('error.generic'));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const tabs: { code: Tab; icon: typeof Building2; label: string }[] = [
     { code: 'company', icon: Building2, label: lang === 'ar' ? 'الشركة' : 'Company' },
