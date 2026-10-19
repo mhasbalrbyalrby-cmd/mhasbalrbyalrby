@@ -50,7 +50,8 @@ begin
 
   if v_invoice.payment_method='cash' then
     select id into v_cash_account from public.chart_of_accounts
-    where id=v_invoice.cash_account_id and tenant_id=v_tenant_id and type='asset' and is_active=true and is_postable=true;
+    where id=v_invoice.cash_account_id and tenant_id=v_tenant_id and type='asset' and is_active=true and is_postable=true
+      and (code='1010' or sub_type='cash' or name ilike '%cash%' or coalesce(name_ar,'') ilike '%نقدية%' or coalesce(name_ar,'') ilike '%صندوق%' or coalesce(name_ar,'') ilike '%خزينة%');
   end if;
   if (v_invoice.payment_method='cash' and v_cash_account is null)
      or (v_invoice.payment_method='credit' and v_party_account is null)
@@ -158,7 +159,8 @@ begin
     for v_cost in select * from public.invoice_additional_costs where invoice_id=p_invoice_id and tenant_id=v_tenant_id order by line_order, created_at loop
       v_cost_party_account:=null;
       if v_cost.payment_method='cash' then
-        select id into v_cash_account from public.chart_of_accounts where id=v_cost.cash_account_id and tenant_id=v_tenant_id and type='asset' and is_active=true and is_postable=true;
+        select id into v_cash_account from public.chart_of_accounts where id=v_cost.cash_account_id and tenant_id=v_tenant_id and type='asset' and is_active=true and is_postable=true
+          and (code='1010' or sub_type='cash' or name ilike '%cash%' or coalesce(name_ar,'') ilike '%نقدية%' or coalesce(name_ar,'') ilike '%صندوق%' or coalesce(name_ar,'') ilike '%خزينة%');
         if v_cash_account is null then raise exception 'Invalid cash account for additional cost %', v_cost.id; end if;
       else
         select pr.account_id into v_cost_party_account
