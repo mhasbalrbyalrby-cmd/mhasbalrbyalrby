@@ -28,6 +28,8 @@ export default function InvoicesPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [currencyOptions, setCurrencyOptions] = useState<{ code: string; name: string; name_ar: string | null; tenant_id: string | null; is_base: boolean }[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<{ from_currency: string; to_currency: string; rate: number; date: string }[]>([]);
+  const [baseCurrencyCode, setBaseCurrencyCode] = useState('SAR');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InvoiceType | 'all'>('all');
@@ -64,7 +66,18 @@ export default function InvoicesPage() {
       }
       setCurrencyOptions([...byCode.values()].sort((a, b) => a.code.localeCompare(b.code)));
       const base = rows.find((row) => row.tenant_id === tenantId && row.is_base)?.code;
-      if (base) setForm((current) => current.currency === 'SAR' ? { ...current, currency: base } : current);
+      if (base) {
+        setBaseCurrencyCode(base);
+        setForm((current) => current.currency === 'SAR' ? { ...current, currency: base } : current);
+      }
+    });
+  }, [profile?.tenant_id]);
+
+  useEffect(() => {
+    const tenantId = profile?.tenant_id;
+    if (!tenantId) return;
+    void supabase.from('exchange_rates').select('from_currency,to_currency,rate,date').eq('tenant_id', tenantId).order('date', { ascending: false }).limit(500).then(({ data }) => {
+      setExchangeRates((data ?? []) as { from_currency: string; to_currency: string; rate: number; date: string }[]);
     });
   }, [profile?.tenant_id]);
 
@@ -135,6 +148,12 @@ export default function InvoicesPage() {
   const taxRate = 0.15;
   const taxAmount = (form.type === 'sale' || form.type === 'return_sale') ? afterDiscount * taxRate : 0;
   const total = afterDiscount + taxAmount;
+  const applicableExchangeRate = form.currency === baseCurrencyCode ? null : exchangeRates
+    .filter((item) => item.date <= form.date && ((item.from_currency === form.currency && item.to_currency === baseCurrencyCode) || (item.from_currency === baseCurrencyCode && item.to_currency === form.currency)))
+    .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null;
+  const invoiceToBaseRate = applicableExchangeRate
+    ? (applicableExchangeRate.from_currency === form.currency ? Number(applicableExchangeRate.rate) : 1 / Number(applicableExchangeRate.rate))
+    : null;
 
   async function handleSave() {
     if (!profile?.tenant_id) return;
@@ -378,6 +397,14 @@ export default function InvoicesPage() {
                 ]).map((currency) => <option key={currency.code} value={currency.code}>{currency.code} — {lang === 'ar' ? currency.name_ar ?? currency.name : currency.name}</option>)}
               </select>
               <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'تُحفظ عملة الفاتورة مع الفاتورة. راجع تبويب العملات وأسعار الصرف لإدارة الأسعار.' : 'The invoice currency is saved with the invoice. Manage rates in Settings → Currencies.'}</p>
+              {form.currency !== baseCurrencyCode && (
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  {invoiceToBaseRate !== null && Number.isFinite(invoiceToBaseRate)
+                    ? (lang === 'ar' ? 'سعر إرشادي بتاريخ ' + (applicableExchangeRate?.date ?? '') + ': 1 ' + form.currency + ' = ' + invoiceToBaseRate.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + baseCurrencyCode : 'Indicative rate on ' + (applicableExchangeRate?.date ?? '') + ': 1 ' + form.currency + ' = ' + invoiceToBaseRate.toLocaleString(undefined, { maximumFractionDigits: 8 }) + ' ' + baseCurrencyCode)
+                    : (lang === 'ar' ? 'لا يوجد سعر صرف مسجل لهذه العملة بتاريخ الفاتورة أو قبله.' : 'No exchange rate is recorded for this currency on or before the invoice date.')}
+                  <span className="block">{lang === 'ar' ? 'تنبيه: سعر العرض لا يُحفظ كسعر تاريخي داخل الفاتورة؛ الفاتورة تحفظ رمز العملة فقط.' : 'Note: this rate is informational only and is not saved historically on the invoice; only the currency code is stored.'}</span>
+                </p>
+              )}
             </div>
           </div>
 
