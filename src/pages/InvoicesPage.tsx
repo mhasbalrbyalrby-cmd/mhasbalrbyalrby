@@ -108,7 +108,7 @@ export default function InvoicesPage() {
       party_id: '',
       date: new Date().toISOString().slice(0, 10),
       due_date: '',
-      currency: 'SAR',
+      currency: baseCurrencyCode,
       notes: '',
       warehouse_id: '',
       shift_id: '',
