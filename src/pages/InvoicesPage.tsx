@@ -27,6 +27,7 @@ export default function InvoicesPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [currencyOptions, setCurrencyOptions] = useState<{ code: string; name: string; name_ar: string | null; tenant_id: string | null; is_base: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InvoiceType | 'all'>('all');
@@ -50,6 +51,22 @@ export default function InvoicesPage() {
   });
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const tenantId = profile?.tenant_id;
+    if (!tenantId) return;
+    void supabase.from('currencies').select('code,name,name_ar,tenant_id,is_base').or(`tenant_id.eq.${tenantId},tenant_id.is.null`).eq('is_active', true).order('code').then(({ data }) => {
+      const rows = (data ?? []) as { code: string; name: string; name_ar: string | null; tenant_id: string | null; is_base: boolean }[];
+      const byCode = new Map<string, typeof rows[number]>();
+      for (const row of rows) {
+        const old = byCode.get(row.code);
+        if (!old || (row.tenant_id === tenantId && old.tenant_id === null)) byCode.set(row.code, row);
+      }
+      setCurrencyOptions([...byCode.values()].sort((a, b) => a.code.localeCompare(b.code)));
+      const base = rows.find((row) => row.tenant_id === tenantId && row.is_base)?.code;
+      if (base) setForm((current) => current.currency === 'SAR' ? { ...current, currency: base } : current);
+    });
+  }, [profile?.tenant_id]);
 
   async function loadData() {
     setLoading(true);
@@ -345,6 +362,22 @@ export default function InvoicesPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
               <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="input-field" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'عملة الفاتورة' : 'Invoice currency'}</label>
+              <select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="input-field">
+                {(currencyOptions.length ? currencyOptions : [
+                  { code: 'SAR', name: 'Saudi Riyal', name_ar: 'ريال سعودي', tenant_id: null, is_base: false },
+                  { code: 'YER', name: 'Yemeni Rial', name_ar: 'ريال يمني', tenant_id: null, is_base: false },
+                  { code: 'USD', name: 'US Dollar', name_ar: 'دولار أمريكي', tenant_id: null, is_base: false },
+                  { code: 'AED', name: 'UAE Dirham', name_ar: 'درهم إماراتي', tenant_id: null, is_base: false },
+                  { code: 'EGP', name: 'Egyptian Pound', name_ar: 'جنيه مصري', tenant_id: null, is_base: false },
+                ]).map((currency) => <option key={currency.code} value={currency.code}>{currency.code} — {lang === 'ar' ? currency.name_ar ?? currency.name : currency.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'تُحفظ عملة الفاتورة مع الفاتورة. راجع تبويب العملات وأسعار الصرف لإدارة الأسعار.' : 'The invoice currency is saved with the invoice. Manage rates in Settings → Currencies.'}</p>
             </div>
           </div>
 
