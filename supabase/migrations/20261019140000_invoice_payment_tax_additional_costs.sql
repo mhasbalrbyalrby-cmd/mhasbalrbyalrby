@@ -7,12 +7,7 @@ ALTER TABLE public.invoices
   ADD COLUMN IF NOT EXISTS tax_enabled boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS tax_rate numeric(7,4) NOT NULL DEFAULT 0 CHECK (tax_rate >= 0 AND tax_rate <= 100);
 
--- Preserve existing posted invoice amounts; backfill only the metadata describing the already-saved tax.
-UPDATE public.invoices
-SET tax_enabled = (coalesce(tax_amount,0) > 0),
-    tax_rate = CASE WHEN coalesce(subtotal,0) - coalesce(discount_amount,0) > 0
-      THEN round((tax_amount / (subtotal - discount_amount)) * 100, 4) ELSE 0 END
-WHERE tax_enabled = false AND coalesce(tax_amount,0) > 0;
+-- Existing invoices keep their stored amounts and historical metadata unchanged.
 
 CREATE TABLE IF NOT EXISTS public.invoice_additional_costs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -107,7 +102,7 @@ begin
     end if;
   end if;
 
-  if v_party_account is null or (v_invoice.type in ('sale','return_sale') and v_revenue_account is null) or
+  if (v_party_account is null and v_invoice.payment_method<>'cash') or (v_invoice.type in ('sale','return_sale') and v_revenue_account is null) or
      (v_invoice.type='purchase' and (case when v_cost_total>0 then v_inventory_account else v_cogs_account end) is null) or
      (v_invoice.type='return_purchase' and v_cogs_account is null) or
      (v_invoice.tax_amount>0 and v_tax_account is null) then
