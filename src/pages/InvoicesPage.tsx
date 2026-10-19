@@ -43,6 +43,7 @@ export default function InvoicesPage() {
   const { profile } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [parties, setParties] = useState<Party[]>([]);
+  const [partyRoles, setPartyRoles] = useState<Record<string, string[]>>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -150,7 +151,26 @@ export default function InvoicesPage() {
     ]);
 
     setInvoices((invData as Invoice[]) ?? []);
-    setParties((partyData as Party[]) ?? []);
+    const loadedParties = (partyData as Party[]) ?? [];
+    setParties(loadedParties);
+    const partyIds = loadedParties.map((party) => party.id);
+    if (partyIds.length > 0) {
+      const { data: roleRows, error: rolesError } = await supabase
+        .from('party_roles')
+        .select('party_id,role')
+        .in('party_id', partyIds);
+      if (!rolesError && roleRows) {
+        const rolesByParty: Record<string, string[]> = {};
+        (roleRows as { party_id: string; role: string }[]).forEach(({ party_id, role }) => {
+          (rolesByParty[party_id] ??= []).push(role);
+        });
+        setPartyRoles(rolesByParty);
+      } else {
+        setPartyRoles({});
+      }
+    } else {
+      setPartyRoles({});
+    }
     setProducts((prodData as Product[]) ?? []);
     setWarehouses((whData as Warehouse[]) ?? []);
     setShifts((shiftData as Shift[]) ?? []);
@@ -357,6 +377,9 @@ export default function InvoicesPage() {
     return matchSearch && matchType;
   });
 
+  const requiredPartyRole = form.type === 'sale' || form.type === 'return_sale' ? 'customer' : 'supplier';
+  const eligibleParties = parties.filter((party) => (partyRoles[party.id] ?? []).includes(requiredPartyRole));
+
   const typeLabels: Record<InvoiceType, { ar: string; en: string }> = {
     sale: { ar: 'مبيعات', en: 'Sale' },
     purchase: { ar: 'مشتريات', en: 'Purchase' },
@@ -462,19 +485,22 @@ export default function InvoicesPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'النوع' : 'Type'}</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as InvoiceType })} className="input-field">
+              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as InvoiceType, party_id: '' })} className="input-field">
                 <option value="sale">{lang === 'ar' ? 'مبيعات' : 'Sale'}</option>
                 <option value="purchase">{lang === 'ar' ? 'مشتريات' : 'Purchase'}</option>
                 <option value="return_sale">{lang === 'ar' ? 'مرتجع مبيعات' : 'Return Sale'}</option>
                 <option value="return_purchase">{lang === 'ar' ? 'مرتجع مشتريات' : 'Return Purchase'}</option>
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اختر نوع المستند أولاً؛ مرتجع المبيعات يتبع العملاء ومرتجع المشتريات يتبع الموردين.' : 'Choose the document type first; sales returns use customers and purchase returns use suppliers.'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الجهة' : 'Party'} *</label>
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? (requiredPartyRole === 'customer' ? 'العميل' : 'المورد') : (requiredPartyRole === 'customer' ? 'Customer' : 'Supplier')} *</label>
               <select value={form.party_id} onChange={(e) => setForm({ ...form, party_id: e.target.value })} className="input-field">
-                <option value="">{lang === 'ar' ? 'اختر' : 'Select'}</option>
-                {parties.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}
+                <option value="">{lang === 'ar' ? (requiredPartyRole === 'customer' ? 'اختر العميل' : 'اختر المورد') : (requiredPartyRole === 'customer' ? 'Select customer' : 'Select supplier')}</option>
+                {eligibleParties.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}
               </select>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? (requiredPartyRole === 'customer' ? 'تظهر هنا الجهات المسجلة بدور عميل فقط.' : 'تظهر هنا الجهات المسجلة بدور مورد فقط.') : (requiredPartyRole === 'customer' ? 'Only contacts registered with the customer role appear here.' : 'Only contacts registered with the supplier role appear here.')}</p>
+              {eligibleParties.length === 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{lang === 'ar' ? (requiredPartyRole === 'customer' ? 'لا يوجد عميل مسجل. أضف جهة اتصال وفعّل دور العميل أولاً.' : 'لا يوجد مورد مسجل. أضف جهة اتصال وفعّل دور المورد أولاً.') : (requiredPartyRole === 'customer' ? 'No customer is registered. Add a contact and enable the customer role first.' : 'No supplier is registered. Add a contact and enable the supplier role first.')}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.date')}</label>
