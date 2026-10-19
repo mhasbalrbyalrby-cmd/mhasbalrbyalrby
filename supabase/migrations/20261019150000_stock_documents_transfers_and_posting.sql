@@ -2,6 +2,17 @@
 -- Repository-only migration: intentionally NOT applied to production.
 begin;
 
+-- Expand the existing movement type constraint to support paired warehouse transfers
+-- and directional stock-count adjustments while retaining legacy values.
+alter table public.stock_movements
+  drop constraint if exists stock_movements_movement_type_check;
+alter table public.stock_movements
+  add constraint stock_movements_movement_type_check
+  check (movement_type in (
+    'in','out','transfer','adjustment','return_in','return_out',
+    'transfer_in','transfer_out','adjustment_in','adjustment_out'
+  ));
+
 create table if not exists public.stock_documents (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
