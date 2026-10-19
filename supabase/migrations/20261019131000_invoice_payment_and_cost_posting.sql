@@ -117,7 +117,8 @@ begin
       raise exception 'Missing postable inventory account for additional costs';
     end if;
     select coalesce(sum(amount),0) into v_cost_total from public.invoice_additional_costs where invoice_id=p_invoice_id and tenant_id=v_tenant_id;
-    select coalesce(sum(line_total),0) into v_line_base_total from public.invoice_lines where invoice_id=p_invoice_id and tenant_id=v_tenant_id and product_id is not null;
+        select coalesce(sum(greatest(line_total,0)),0) into v_line_base_total from public.invoice_lines where invoice_id=p_invoice_id and tenant_id=v_tenant_id and product_id is not null;
+    if v_cost_total>0 and v_line_base_total<=0 then raise exception 'Cannot allocate additional costs: purchase has no positive-value product lines'; end if;
     for v_cost in select * from public.invoice_additional_costs where invoice_id=p_invoice_id and tenant_id=v_tenant_id order by line_order, created_at loop
       v_cost_party_account:=null;
       if v_cost.payment_method='cash' then
@@ -152,7 +153,7 @@ begin
       insert into public.stock_movements(tenant_id,product_id,warehouse_id,movement_type,quantity,unit_cost,reference_type,reference_id,created_by)
       values(v_tenant_id,v_lines.product_id,v_invoice.warehouse_id,
         case when v_invoice.type in ('sale','return_purchase') then 'out' else 'in' end,
-        v_lines.quantity,case when v_invoice.type='purchase' and v_line_base_total>0 and v_lines.product_id is not null then v_lines.unit_price + ((v_cost_total * (v_lines.quantity*v_lines.unit_price) / v_line_base_total) / nullif(v_lines.quantity,0)) else v_lines.unit_price end,'invoice',p_invoice_id,v_user_id);
+        v_lines.quantity,case when v_invoice.type='purchase' and v_line_base_total>0 and v_lines.product_id is not null then v_lines.unit_price + ((v_cost_total * greatest(v_lines.line_total,0) / v_line_base_total) / nullif(v_lines.quantity,0)) else v_lines.unit_price end,'invoice',p_invoice_id,v_user_id);
     end if;
   end loop;
 
