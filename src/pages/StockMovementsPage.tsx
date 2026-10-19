@@ -87,10 +87,11 @@ export default function StockMovementsPage() {
   }
   useEffect(() => { void loadData(); }, [tenant?.id]);
 
-  const canSave = useMemo(() => schemaReady && !!warehouseId && !!docNumber.trim() && lines.length > 0 &&
-    lines.every(l => !!l.product_id && Number(l.quantity) > 0 && Number(l.unit_cost) >= 0 &&
-      (docType !== 'count_adjustment' || (l.counted_quantity !== '' && Number(l.counted_quantity) >= 0))) &&
-    (docType !== 'transfer' || (!!toWarehouseId && toWarehouseId !== warehouseId)), [schemaReady, warehouseId, docNumber, lines, docType, toWarehouseId]);
+  const hasDuplicateProducts = new Set(lines.filter(l => l.product_id).map(l => l.product_id)).size !== lines.filter(l => l.product_id).length;
+  const canSave = useMemo(() => schemaReady && !!warehouseId && !!docNumber.trim() && lines.length > 0 && !hasDuplicateProducts &&
+    lines.every(l => !!l.product_id && Number.isFinite(Number(l.quantity)) && Number(l.quantity) > 0 && Number.isFinite(Number(l.unit_cost)) && Number(l.unit_cost) >= 0 &&
+      (docType !== 'count_adjustment' || (l.counted_quantity !== '' && Number.isFinite(Number(l.counted_quantity)) && Number(l.counted_quantity) >= 0))) &&
+    (docType !== 'transfer' || (!!toWarehouseId && toWarehouseId !== warehouseId)), [schemaReady, warehouseId, docNumber, lines, docType, toWarehouseId, hasDuplicateProducts]);
 
   function resetForm() {
     setDocType('stock_in'); setWarehouseId(''); setToWarehouseId(''); setDocNumber('');
@@ -167,6 +168,7 @@ export default function StockMovementsPage() {
         {docType === 'transfer' && <label className="text-sm space-y-1"><span>{ar ? 'المستودع المستلم' : 'Destination warehouse'}</span><select className={inputClass} value={toWarehouseId} onChange={e => setToWarehouseId(e.target.value)}><option value="">{ar ? 'اختر المستودع المستلم' : 'Select destination'}</option>{warehouses.filter(w => w.id !== warehouseId).map(w => <option key={w.id} value={w.id}>{(ar && w.name_ar) || w.name}</option>)}</select></label>}
         <label className="text-sm space-y-1 sm:col-span-2"><span>{ar ? 'ملاحظات' : 'Notes'}</span><input className={inputClass} value={notes} onChange={e => setNotes(e.target.value)} /></label>
       </div>
+      {hasDuplicateProducts && <p role="alert" className="text-sm text-error-600">{ar ? 'لا يمكن تكرار الصنف في أكثر من سطر بالسند نفسه؛ اجمع الكمية في سطر واحد.' : 'A product can only appear once per document. Combine its quantity into one line.'}</p>}
       <div className="space-y-3">
         <div className="flex justify-between items-center gap-2"><h4 className="font-medium">{ar ? 'الأصناف والكميات' : 'Products and quantities'}</h4><button className="btn-secondary text-sm" type="button" onClick={() => setLines(v => [...v, { product_id: '', quantity: '1', unit_cost: '0', counted_quantity: '' }])}>{ar ? '+ إضافة صنف' : '+ Add line'}</button></div>
         {lines.map((line, index) => <div key={index} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 rounded-lg border border-[var(--color-border)] p-3">
