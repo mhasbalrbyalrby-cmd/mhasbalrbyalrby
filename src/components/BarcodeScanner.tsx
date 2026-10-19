@@ -74,13 +74,26 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
         }
         streamRef.current = stream;
         const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities() as TorchCapabilities;
-        setTorchSupported(capabilities.torch === true);
-
         const video = videoRef.current;
         if (!video) throw new Error(ar ? 'تعذر تشغيل عرض الكاميرا.' : 'Could not initialize camera preview.');
         video.srcObject = stream;
+
+        // Wait for camera metadata before checking capabilities or enabling torch controls.
+        if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+          await new Promise<void>((resolve, reject) => {
+            const onReady = () => { cleanup(); resolve(); };
+            const onError = () => { cleanup(); reject(new Error(ar ? 'تعذر تهيئة الكاميرا.' : 'Camera metadata could not be loaded.')); };
+            const cleanup = () => {
+              video.removeEventListener('loadedmetadata', onReady);
+              video.removeEventListener('error', onError);
+            };
+            video.addEventListener('loadedmetadata', onReady, { once: true });
+            video.addEventListener('error', onError, { once: true });
+          });
+        }
         await video.play();
+        const capabilities = track.getCapabilities() as TorchCapabilities;
+        setTorchSupported(capabilities.torch === true);
         if (!disposed) {
           setStarting(false);
           scanFrame();
