@@ -18,24 +18,58 @@ export default function AccountingPage() {
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [seeding, setSeeding] = useState(false);
+  const [seedMessage, setSeedMessage] = useState('');
 
   useEffect(() => {
-    loadAll();
-  }, []);
+    void loadAll();
+  }, [profile?.tenant_id]);
 
   async function loadAll() {
-    setLoading(true);
     const tenantId = profile?.tenant_id;
-    if (!tenantId) { setLoading(false); return; }
+    if (!tenantId) {
+      setAccounts([]);
+      setJournals([]);
+      setLoading(false);
+      return;
+    }
 
-    const [{ data: accData }, { data: jourData }] = await Promise.all([
-      supabase.from('chart_of_accounts').select('*').eq('tenant_id', tenantId).order('code'),
-      supabase.from('journal_entries').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
-    ]);
+    setLoading(true);
+    setLoadError('');
+    try {
+      const [accountsResult, journalsResult] = await Promise.all([
+        supabase.from('chart_of_accounts').select('*').eq('tenant_id', tenantId).order('code'),
+        supabase.from('journal_entries').select('*').eq('tenant_id', tenantId).order('date', { ascending: false }),
+      ]);
+      if (accountsResult.error) throw accountsResult.error;
+      if (journalsResult.error) throw journalsResult.error;
+      setAccounts((accountsResult.data as ChartOfAccount[]) ?? []);
+      setJournals((journalsResult.data as JournalEntry[]) ?? []);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر تحميل البيانات' : 'Failed to load accounting data'));
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    setAccounts((accData as ChartOfAccount[]) ?? []);
-    setJournals((jourData as JournalEntry[]) ?? []);
-    setLoading(false);
+  async function importDefaultChart() {
+    setSeeding(true);
+    setSeedMessage('');
+    setLoadError('');
+    try {
+      const { data, error } = await supabase.rpc('ensure_default_chart_of_accounts');
+      if (error) throw error;
+      const inserted = Number(data ?? 0);
+      setSeedMessage(lang === 'ar'
+        ? (inserted > 0 ? `تمت إضافة ${inserted} حساباً افتراضياً.` : 'الدليل موجود بالفعل؛ تم التحقق من الحسابات الافتراضية.')
+        : (inserted > 0 ? `Added ${inserted} default accounts.` : 'The chart already exists; default accounts were checked.'));
+      await loadAll();
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : (lang === 'ar' ? 'تعذر استيراد الدليل الافتراضي' : 'Could not import the default chart'));
+    } finally {
+      setSeeding(false);
+    }
   }
 
   if (loading) {
@@ -77,13 +111,29 @@ export default function AccountingPage() {
         </button>
       </div>
 
-      {tab === 'accounts' && <AccountsTab accounts={accounts} onChange={loadAll} />}
+      {loadError && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-300">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      )}
+      {tab === 'accounts' && (
+        <>
+          {seedMessage && <p role="status" className="text-sm text-[var(--color-text-muted)]">{seedMessage}</p>}
+          <AccountsTab accounts={accounts} onChange={loadAll} onImportDefaults={importDefaultChart} importingDefaults={seeding} />
+        </>
+      )}
       {tab === 'journals' && <JournalsTab journals={journals} accounts={accounts} onChange={loadAll} />}
     </div>
   );
 }
 
-function AccountsTab({ accounts, onChange }: { accounts: ChartOfAccount[]; onChange: () => void }) {
+function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }: {
+  accounts: ChartOfAccount[];
+  onChange: () => void;
+  onImportDefaults: () => void;
+  importingDefaults: boolean;
+}) {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
   const [search, setSearch] = useState('');
@@ -201,8 +251,17 @@ function AccountsTab({ accounts, onChange }: { accounts: ChartOfAccount[]; onCha
       </div>
 
       {filtered.length === 0 ? (
-        <div className="card text-center py-12 text-[var(--color-text-muted)]">
-          {t('common.no_data')}
+        <div className="card text-center py-12">
+          <BookOpen className="mx-auto mb-3 h-8 w-8 text-[var(--color-text-muted)]" />
+          <p className="mb-4 text-[var(--color-text-muted)]">
+            {lang === 'ar' ? 'لا توجد حسابات في دليل هذه المؤسسة.' : 'No accounts exist in this organization chart yet.'}
+          </p>
+          {!search && (
+            <button type="button" onClick={onImportDefaults} disabled={importingDefaults} className="btn-primary mx-auto inline-flex items-center gap-2">
+              {importingDefaults && <Loader2 className="h-4 w-4 animate-spin" />}
+              {lang === 'ar' ? 'استيراد دليل الحسابات الافتراضي' : 'Import default chart of accounts'}
+            </button>
+          )}
         </div>
       ) : (
         <div className="card overflow-x-auto">
