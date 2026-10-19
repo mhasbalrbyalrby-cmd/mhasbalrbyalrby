@@ -56,6 +56,8 @@ export default function InvoicesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModal, setViewModal] = useState<Invoice | null>(null);
   const [viewLines, setViewLines] = useState<InvoiceLine[]>([]);
+  const [viewCosts, setViewCosts] = useState<{ id: string; description: string; amount: number; payment_method: 'cash' | 'credit'; cash_account_id: string | null; party_id: string | null }[]>([]);
+  const [invoiceSchemaReady, setInvoiceSchemaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -78,6 +80,18 @@ export default function InvoicesPage() {
   });
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const tenantId = profile?.tenant_id;
+    if (!tenantId) return;
+    void (async () => {
+      const [invoiceSchema, costSchema] = await Promise.all([
+        supabase.from('invoices').select('payment_method,cash_account_id,tax_enabled,tax_rate').limit(1),
+        supabase.from('invoice_additional_costs').select('id').limit(1),
+      ]);
+      setInvoiceSchemaReady(!invoiceSchema.error && !costSchema.error);
+    })();
+  }, [profile?.tenant_id]);
 
   useEffect(() => {
     const tenantId = profile?.tenant_id;
@@ -329,8 +343,12 @@ export default function InvoicesPage() {
 
   async function viewInvoice(inv: Invoice) {
     setViewModal(inv);
-    const { data } = await supabase.from('invoice_lines').select('*').eq('invoice_id', inv.id).order('line_order');
-    setViewLines((data as InvoiceLine[]) ?? []);
+    const [{ data: lines }, { data: costs }] = await Promise.all([
+      supabase.from('invoice_lines').select('*').eq('invoice_id', inv.id).order('line_order'),
+      supabase.from('invoice_additional_costs').select('id,description,amount,payment_method,cash_account_id,party_id').eq('invoice_id', inv.id).order('line_order'),
+    ]);
+    setViewLines((lines as InvoiceLine[]) ?? []);
+    setViewCosts((costs as typeof viewCosts) ?? []);
   }
 
   const filtered = invoices.filter((inv) => {
@@ -434,6 +452,7 @@ export default function InvoicesPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={lang === 'ar' ? 'فاتورة جديدة' : 'New Invoice'} size="lg">
+        {!invoiceSchemaReady && <div className="mb-4 rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">{lang === 'ar' ? 'معاينة الواجهة فقط: ملفات Migration موجودة على الفرع لكنها لم تُطبّق على قاعدة البيانات المرتبطة. الحفظ معطّل لحماية البيانات حتى اعتماد المخطط وتطبيقه في بيئة اختبار.' : 'UI preview only: migrations are committed to this branch but are not applied to the connected database. Saving is disabled to protect data until the schema is applied in a test environment.'}</div>}
         {error && (
           <div className="flex items-center gap-2 bg-error-50 dark:bg-error-900/30 text-error-600 dark:text-error-400 text-sm rounded-lg px-3 py-2 mb-4">
             <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
@@ -597,7 +616,7 @@ export default function InvoicesPage() {
 
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !invoiceSchemaReady} className="btn-primary flex items-center gap-2">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}
             </button>
           </div>
@@ -613,8 +632,10 @@ export default function InvoicesPage() {
               <div><span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'الجهة' : 'Party'}: </span><span className="font-medium text-[var(--color-text)]">{(() => { const p = parties.find((p) => p.id === viewModal.party_id); return p ? (lang === 'ar' ? p.name_ar ?? p.name : p.name) : '—'; })()}</span></div>
               <div><span className="text-[var(--color-text-muted)]">{t('common.status')}: </span><span className="font-medium text-[var(--color-text)]">{viewModal.status}</span></div>
               {viewModal.due_date && <div><span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'الاستحقاق' : 'Due'}: </span><span className="font-medium text-[var(--color-text)]">{viewModal.due_date}</span></div>}
+              <div><span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'طريقة الدفع' : 'Payment'}: </span><span className="font-medium text-[var(--color-text)]">{(viewModal as Invoice & { payment_method?: 'cash' | 'credit' }).payment_method === 'cash' ? (lang === 'ar' ? 'نقدي' : 'Cash') : (lang === 'ar' ? 'آجل' : 'Credit')}</span></div>
               {viewModal.discount_amount > 0 && <div><span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'الخصم' : 'Discount'}: </span><span className="font-medium text-[var(--color-text)]">{viewModal.discount_amount.toFixed(2)}</span></div>}
             </div>
+            {viewCosts.length > 0 && <div className="rounded-lg border border-[var(--color-border)] p-3"><h3 className="mb-2 font-semibold text-[var(--color-text)]">{lang === 'ar' ? 'التكاليف الإضافية' : 'Additional costs'}</h3>{viewCosts.map((cost) => <div key={cost.id} className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] py-1 text-sm"><span>{cost.description} · {cost.payment_method === 'cash' ? (lang === 'ar' ? 'نقداً' : 'Cash') : (lang === 'ar' ? 'آجل' : 'Credit')}</span><span>{Number(cost.amount).toFixed(2)} {viewModal.currency}</span></div>)}</div>}
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
