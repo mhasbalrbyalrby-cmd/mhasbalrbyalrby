@@ -113,3 +113,17 @@ FOR EACH ROW
 EXECUTE FUNCTION public.seed_chart_of_accounts_after_tenant_insert();
 
 REVOKE ALL ON FUNCTION public.seed_chart_of_accounts_after_tenant_insert() FROM PUBLIC, anon, authenticated;
+
+-- Backfill existing business tenants as part of the same migration.
+-- The system-owner tenant is intentionally excluded.
+DO $backfill$
+DECLARE
+  v_tenant record;
+BEGIN
+  FOR v_tenant IN
+    SELECT id FROM public.tenants WHERE is_owner = false
+  LOOP
+    PERFORM public.seed_chart_of_accounts_for_tenant(v_tenant.id);
+  END LOOP;
+END;
+$backfill$;
