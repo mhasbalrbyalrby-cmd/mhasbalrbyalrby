@@ -142,12 +142,13 @@ begin
     return jsonb_build_object('success',false,'error','invalid_destination_warehouse');
   end if;
 
+  -- Phase 1: lock and validate every line before writing any movement.
+  -- Returning an error from a validation pass cannot leave partial stock movements.
   for v_line in
     select l.* from public.stock_document_lines l
     where l.document_id=v_doc.id and l.tenant_id=v_doc.tenant_id
     order by l.product_id for update
   loop
-    -- Serialize stock checks per tenant/product/warehouse to prevent concurrent overselling.
     perform pg_advisory_xact_lock(hashtext(v_doc.tenant_id::text || ':' || v_line.product_id::text || ':' || v_doc.warehouse_id::text)::bigint);
     if v_doc.document_type='transfer' then
       perform pg_advisory_xact_lock(hashtext(v_doc.tenant_id::text || ':' || v_line.product_id::text || ':' || v_doc.to_warehouse_id::text)::bigint);
@@ -156,18 +157,24 @@ begin
     if not exists (select 1 from public.products p where p.id=v_line.product_id and p.tenant_id=v_doc.tenant_id and p.type='product') then
       return jsonb_build_object('success',false,'error','invalid_product','product_id',v_line.product_id);
     end if;
-
     if v_doc.document_type in ('stock_out','transfer') then
       v_current := public.get_product_stock(v_doc.tenant_id,v_line.product_id,v_doc.warehouse_id);
       if v_current < v_line.quantity then
         return jsonb_build_object('success',false,'error','insufficient_stock','product_id',v_line.product_id,'available',v_current,'requested',v_line.quantity);
       end if;
     end if;
+    if v_doc.document_type='count_adjustment' and v_line.counted_quantity is null then
+      return jsonb_build_object('success',false,'error','counted_quantity_required','product_id',v_line.product_id);
+    end if;
+  end loop;
 
+  -- Phase 2: all validation passed; write movements and final status in this transaction.
+  for v_line in
+    select l.* from public.stock_document_lines l
+    where l.document_id=v_doc.id and l.tenant_id=v_doc.tenant_id
+    order by l.product_id
+  loop
     if v_doc.document_type='count_adjustment' then
-      if v_line.counted_quantity is null then
-        return jsonb_build_object('success',false,'error','counted_quantity_required','product_id',v_line.product_id);
-      end if;
       v_current := public.get_product_stock(v_doc.tenant_id,v_line.product_id,v_doc.warehouse_id);
       if v_line.counted_quantity > v_current then
         v_movement_type := 'adjustment_in';
