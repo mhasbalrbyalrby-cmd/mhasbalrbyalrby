@@ -25,6 +25,10 @@ begin
   if not found then return jsonb_build_object('success',false,'error','not_found'); end if;
   if v_invoice.status<>'draft' then return jsonb_build_object('success',false,'error','not_draft'); end if;
 
+  if v_invoice.type<>'purchase' and exists(select 1 from public.invoice_additional_costs c where c.invoice_id=p_invoice_id and c.tenant_id=v_tenant_id) then
+    return jsonb_build_object('success',false,'error','additional_costs_only_allowed_on_purchases');
+  end if;
+
   select id into v_revenue_account from public.chart_of_accounts where tenant_id=v_tenant_id and type='revenue' and is_postable=true order by code limit 1;
   select id into v_tax_account from public.chart_of_accounts where tenant_id=v_tenant_id and sub_type='tax' and is_postable=true order by code limit 1;
   select id into v_cogs_account from public.chart_of_accounts where tenant_id=v_tenant_id and sub_type='cogs' and is_postable=true order by code limit 1;
@@ -185,7 +189,7 @@ begin
       insert into public.stock_movements(tenant_id,product_id,warehouse_id,movement_type,quantity,unit_cost,reference_type,reference_id,created_by)
       values(v_tenant_id,v_lines.product_id,v_invoice.warehouse_id,
         case when v_invoice.type in ('sale','return_purchase') then 'out' else 'in' end,
-        v_lines.quantity,case when v_invoice.type='purchase' and v_line_base_total>0 and v_lines.product_id is not null then v_lines.unit_price + ((v_cost_total * greatest(v_lines.line_total,0) / v_line_base_total) / nullif(v_lines.quantity,0)) else v_lines.unit_price end,'invoice',p_invoice_id,v_user_id);
+        v_lines.quantity,case when v_invoice.type='purchase' and v_line_base_total>0 and v_lines.product_id is not null and v_lines.quantity>0 then (greatest(v_lines.line_total,0) / v_lines.quantity) + ((v_cost_total * greatest(v_lines.line_total,0) / v_line_base_total) / v_lines.quantity) else v_lines.unit_price end,'invoice',p_invoice_id,v_user_id);
     end if;
   end loop;
 
