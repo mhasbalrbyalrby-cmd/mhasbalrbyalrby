@@ -92,9 +92,21 @@ export default function BarcodeScanner({ lang, onDetected, onClose }: BarcodeSca
           });
         }
         await video.play();
-        const capabilities = track.getCapabilities() as TorchCapabilities;
-        setTorchSupported(capabilities.torch === true);
+        // Torch capability probing is optional: some mobile browsers can stream video
+        // but do not implement MediaStreamTrack.getCapabilities(). Never let that
+        // optional API prevent barcode scanning from starting.
+        let hasTorch = false;
+        try {
+          const getCapabilities = track.getCapabilities;
+          if (typeof getCapabilities === 'function') {
+            const capabilities = getCapabilities.call(track) as TorchCapabilities;
+            hasTorch = capabilities.torch === true;
+          }
+        } catch {
+          hasTorch = false;
+        }
         if (!disposed) {
+          setTorchSupported(hasTorch);
           setStarting(false);
           scanFrame();
         }
