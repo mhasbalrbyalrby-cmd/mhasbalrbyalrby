@@ -74,7 +74,7 @@ export default function InventoryPage() {
 
     let highest = 0;
     for (const row of data ?? []) {
-      const match = typeof row.code === 'string' ? row.code.trim().match(/^P(\\d+)$/i) : null;
+      const match = typeof row.code === 'string' ? row.code.trim().match(/^P(\d+)$/i) : null;
       if (match) highest = Math.max(highest, Number(match[1]));
     }
     return `P${String(highest + 1).padStart(3, '0')}`;
