@@ -397,7 +397,7 @@ export default function InvoicesPage() {
               <span className="text-[var(--color-text)]">{subtotal.toFixed(2)} {form.currency}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-[var(--color-text-muted)]">{lang === 'ar' ? 'خصم الفاتورة' : 'Invoice Discount'}</span>
+              <span className="text-[var(--color-text-muted)]">{lang === 'ar' ? (form.type === 'sale' || form.type === 'return_sale' ? 'الخصم المسموح به (مبيعات)' : 'الخصم المكتسب (مشتريات)') : (form.type === 'sale' || form.type === 'return_sale' ? 'Discount Allowed (Sales)' : 'Discount Earned (Purchases)')}</span>
               <input type="number" step="0.01" value={form.discount_amount || ''} onChange={(e) => setForm({ ...form, discount_amount: Number(e.target.value) })} className="input-field !w-32 !py-1 text-end" />
             </div>
             {(form.type === 'sale' || form.type === 'return_sale') && (
