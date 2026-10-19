@@ -12,6 +12,8 @@ declare
   v_party_account uuid; v_revenue_account uuid; v_tax_account uuid; v_cogs_account uuid;
   v_inventory_account uuid; v_cash_account uuid; v_cost_party_account uuid; v_cost record;
   v_cost_total numeric(18,2):=0; v_line_base_total numeric(18,2):=0; v_allocated_cost numeric(18,2):=0;
+  v_product_subtotal numeric(18,2):=0; v_service_subtotal numeric(18,2):=0;
+  v_product_discount numeric(18,2):=0; v_service_discount numeric(18,2):=0;
   v_total_debit numeric(18,2):=0; v_total_credit numeric(18,2):=0;
 begin
   select tenant_id into v_tenant_id from public.profiles where id=v_user_id limit 1;
@@ -49,7 +51,7 @@ begin
   if (v_invoice.payment_method='cash' and v_cash_account is null)
      or (v_invoice.payment_method='credit' and v_party_account is null)
      or (v_invoice.type in ('sale','return_sale') and v_revenue_account is null)
-     or (v_invoice.type in ('purchase','return_purchase') and v_cogs_account is null)
+     or (v_invoice.type in ('purchase','return_purchase') and (v_cogs_account is null or v_inventory_account is null))
      or (v_invoice.tax_amount>0 and v_tax_account is null) then
     return jsonb_build_object('success',false,'error','missing_account');
   end if;
@@ -72,9 +74,24 @@ begin
       v_total_credit:=v_total_credit+v_invoice.tax_amount;
     end if;
   elsif v_invoice.type='purchase' then
-    insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
-    values(v_entry_id,v_tenant_id,v_cogs_account,'COGS - '||v_invoice.invoice_number,(v_invoice.subtotal-v_invoice.discount_amount),0,v_invoice.currency,1,0);
-    v_total_debit:=v_total_debit+(v_invoice.subtotal-v_invoice.discount_amount);
+    select coalesce(sum(case when product_id is not null then greatest(line_total,0) else 0 end),0),
+           coalesce(sum(case when product_id is null then greatest(line_total,0) else 0 end),0)
+      into v_product_subtotal,v_service_subtotal
+      from public.invoice_lines where invoice_id=p_invoice_id and tenant_id=v_tenant_id;
+    if v_invoice.subtotal>0 then
+      v_product_discount:=least(v_invoice.discount_amount,v_invoice.subtotal)*v_product_subtotal/v_invoice.subtotal;
+      v_service_discount:=least(v_invoice.discount_amount,v_invoice.subtotal)-v_product_discount;
+    end if;
+    if v_product_subtotal-v_product_discount>0 then
+      insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
+      values(v_entry_id,v_tenant_id,v_inventory_account,'Inventory purchase - '||v_invoice.invoice_number,(v_product_subtotal-v_product_discount),0,v_invoice.currency,1,0);
+      v_total_debit:=v_total_debit+(v_product_subtotal-v_product_discount);
+    end if;
+    if v_service_subtotal-v_service_discount>0 then
+      insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
+      values(v_entry_id,v_tenant_id,v_cogs_account,'Purchase services/other - '||v_invoice.invoice_number,(v_service_subtotal-v_service_discount),0,v_invoice.currency,1,1);
+      v_total_debit:=v_total_debit+(v_service_subtotal-v_service_discount);
+    end if;
     if v_invoice.tax_amount>0 then
       insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
       values(v_entry_id,v_tenant_id,v_tax_account,'Tax - '||v_invoice.invoice_number,v_invoice.tax_amount,0,v_invoice.currency,1,1);
@@ -96,9 +113,24 @@ begin
       v_total_debit:=v_total_debit+v_invoice.tax_amount;
     end if;
   elsif v_invoice.type='return_purchase' then
-    insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
-    values(v_entry_id,v_tenant_id,v_cogs_account,'COGS Return - '||v_invoice.invoice_number,0,(v_invoice.subtotal-v_invoice.discount_amount),v_invoice.currency,1,0);
-    v_total_credit:=v_total_credit+(v_invoice.subtotal-v_invoice.discount_amount);
+    select coalesce(sum(case when product_id is not null then greatest(line_total,0) else 0 end),0),
+           coalesce(sum(case when product_id is null then greatest(line_total,0) else 0 end),0)
+      into v_product_subtotal,v_service_subtotal
+      from public.invoice_lines where invoice_id=p_invoice_id and tenant_id=v_tenant_id;
+    if v_invoice.subtotal>0 then
+      v_product_discount:=least(v_invoice.discount_amount,v_invoice.subtotal)*v_product_subtotal/v_invoice.subtotal;
+      v_service_discount:=least(v_invoice.discount_amount,v_invoice.subtotal)-v_product_discount;
+    end if;
+    if v_product_subtotal-v_product_discount>0 then
+      insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
+      values(v_entry_id,v_tenant_id,v_inventory_account,'Inventory purchase return - '||v_invoice.invoice_number,0,(v_product_subtotal-v_product_discount),v_invoice.currency,1,0);
+      v_total_credit:=v_total_credit+(v_product_subtotal-v_product_discount);
+    end if;
+    if v_service_subtotal-v_service_discount>0 then
+      insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
+      values(v_entry_id,v_tenant_id,v_cogs_account,'Purchase service return - '||v_invoice.invoice_number,0,(v_service_subtotal-v_service_discount),v_invoice.currency,1,1);
+      v_total_credit:=v_total_credit+(v_service_subtotal-v_service_discount);
+    end if;
     if v_invoice.tax_amount>0 then
       insert into public.journal_lines(journal_entry_id,tenant_id,account_id,description,debit,credit,currency,exchange_rate,line_order)
       values(v_entry_id,v_tenant_id,v_tax_account,'Tax Return - '||v_invoice.invoice_number,0,v_invoice.tax_amount,v_invoice.currency,1,1);
