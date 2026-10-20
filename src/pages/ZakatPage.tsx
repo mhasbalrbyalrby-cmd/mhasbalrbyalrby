@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/Modal';
 
+const ZAKAT_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function ZakatPage() {
   const { lang } = useI18n();
   const { profile } = useAuth();
@@ -54,6 +56,7 @@ export default function ZakatPage() {
   }
 
   async function handleSave() {
+    if (!ZAKAT_WRITES_ENABLED) { setError(ar ? 'الحفظ معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Saving is temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id) return;
     setSaving(true); setError('');
     try {
@@ -87,6 +90,7 @@ export default function ZakatPage() {
   }
 
   async function recordPayment(rec: ZakatRecord) {
+    if (!ZAKAT_WRITES_ENABLED) { setError(ar ? 'تسجيل الدفعات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Payment recording is temporarily disabled until isolated database tests pass.'); return; }
     const amount = prompt(lang === 'ar' ? 'أدخل المبلغ المدفوع:' : 'Enter paid amount:', rec.zakat_due.toFixed(2));
     if (!amount) return;
     const paid = Number(amount);
@@ -130,7 +134,7 @@ export default function ZakatPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} disabled={records.length === 0} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{ar ? 'تصدير' : 'Export'}</button>
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'احتساب جديد' : 'New Calculation'}</button>
+          <button onClick={openCreate} disabled={!ZAKAT_WRITES_ENABLED} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'احتساب جديد' : 'New Calculation'}</button>
         </div>
       </div>
 
@@ -215,7 +219,7 @@ export default function ZakatPage() {
                   </td>
                   <td className="py-2 px-3 text-end">
                     {r.status !== 'paid' && (
-                      <button onClick={() => recordPayment(r)} className="btn-secondary !p-1.5 text-success-600" title={ar ? 'تسجيل دفعة' : 'Record Payment'}>
+                      <button onClick={() => recordPayment(r)} disabled={!ZAKAT_WRITES_ENABLED} className="btn-secondary !p-1.5 text-success-600" title={ar ? 'تسجيل دفعة' : 'Record Payment'}>
                         <Save className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -275,7 +279,7 @@ export default function ZakatPage() {
 
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button>
+            <button onClick={handleSave} disabled={saving || !ZAKAT_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button>
           </div>
         </div>
       </Modal>
