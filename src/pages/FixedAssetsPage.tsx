@@ -17,6 +17,8 @@ const STATUS_AR: Record<string, string> = {
   active: 'نشط', disposed: 'مستبعد', fully_depreciated: 'مستهلك بالكامل',
 };
 
+const FIXED_ASSET_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function FixedAssetsPage() {
   const { lang } = useI18n();
   const { profile } = useAuth();
@@ -79,6 +81,7 @@ export default function FixedAssetsPage() {
   }
 
   async function handleSave() {
+    if (!FIXED_ASSET_WRITES_ENABLED) { setError(ar ? 'تعديلات الأصول معطلة مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Asset changes are temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id || !form.asset_name.trim()) return;
     setSaving(true); setError('');
     try {
@@ -116,6 +119,7 @@ export default function FixedAssetsPage() {
   }
 
   async function deleteAsset(a: FixedAsset) {
+    if (!FIXED_ASSET_WRITES_ENABLED) { setError(ar ? 'حذف الأصول معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Asset deletion is temporarily disabled until isolated database tests pass.'); return; }
     if (!confirm(ar ? 'حذف هذا الأصل؟' : 'Delete this asset?')) return;
     const { error: e } = await supabase.from('fixed_assets').delete().eq('id', a.id);
     if (e) { setError(e.message); return; }
@@ -123,6 +127,7 @@ export default function FixedAssetsPage() {
   }
 
   async function runDepreciation(a: FixedAsset) {
+    if (!FIXED_ASSET_WRITES_ENABLED) { setError(ar ? 'ترحيل الإهلاك معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Depreciation posting is temporarily disabled until isolated database tests pass.'); return; }
     if (!confirm(ar ? `احتساب إهلاك سنة واحدة لهذا الأصل؟ (${a.annual_depreciation?.toFixed(2) ?? '0'})` : `Post one year of depreciation? (${a.annual_depreciation?.toFixed(2) ?? '0'})`)) return;
     const newAccum = (a.accumulated_depreciation ?? 0) + (a.annual_depreciation ?? 0);
     const newValue = (a.purchase_cost ?? 0) - newAccum;
@@ -167,7 +172,7 @@ export default function FixedAssetsPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} disabled={assets.length === 0} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{ar ? 'تصدير' : 'Export'}</button>
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'أصل جديد' : 'New Asset'}</button>
+          <button onClick={openCreate} disabled={!FIXED_ASSET_WRITES_ENABLED} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'أصل جديد' : 'New Asset'}</button>
         </div>
       </div>
 
@@ -216,12 +221,12 @@ export default function FixedAssetsPage() {
                   <td className="py-2 px-3 text-end">
                     <div className="flex gap-1 justify-end">
                       {a.status === 'active' && (
-                        <button onClick={() => runDepreciation(a)} className="btn-secondary !p-1.5 text-accent-600" title={ar ? 'احتساب إهلاك' : 'Post depreciation'}>
+                        <button onClick={() => runDepreciation(a)} disabled={!FIXED_ASSET_WRITES_ENABLED} className="btn-secondary !p-1.5 text-accent-600" title={ar ? 'احتساب إهلاك' : 'Post depreciation'}>
                           <TrendingDown className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button onClick={() => openEdit(a)} className="btn-secondary !p-1.5" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => deleteAsset(a)} className="btn-secondary !p-1.5 text-error-500" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => openEdit(a)} disabled={!FIXED_ASSET_WRITES_ENABLED} className="btn-secondary !p-1.5" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => deleteAsset(a)} disabled={!FIXED_ASSET_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
@@ -265,7 +270,7 @@ export default function FixedAssetsPage() {
             <span className="font-bold text-accent-600">{computedDepreciation.toFixed(2)}</span>
           </div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'ملاحظات' : 'Notes'}</label><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input-field min-h-16" rows={2} /></div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handleSave} disabled={saving || !FIXED_ASSET_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
     </div>
