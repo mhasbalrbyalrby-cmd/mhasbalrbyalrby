@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: TypeScript typecheck
         run: npm run typecheck
+      - name: Production build
+        run: npm run build
       - name: CSV regression tests
         if: always()
         run: node --test tests/csv.test.mjs
