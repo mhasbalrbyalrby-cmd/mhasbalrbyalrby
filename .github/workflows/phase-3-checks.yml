@@ -25,6 +25,6 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
-      - name: CSV regression tests
+      - name: CSV and write-safety regression tests
         if: always()
-        run: node --test tests/csv.test.mjs
+        run: node --test tests/*.test.mjs
