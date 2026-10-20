@@ -3,7 +3,7 @@ import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { useTheme } from '../lib/theme-context';
 import { supabase } from '../lib/supabase';
-import type { Tenant } from './types/database';
+import type { Tenant } from '@/types/database';
 import {
   Settings, Building2, MapPin, Coins, Save, Loader2,
   AlertCircle, CheckCircle2, Sun, Moon, Contrast, Globe,
