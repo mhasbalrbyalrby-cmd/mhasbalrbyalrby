@@ -11,6 +11,8 @@ import {
 
 type Tab = 'accounts' | 'journals';
 
+const ACCOUNTING_WRITES_ENABLED = false; // Re-enable only after isolated database tests and approval.
+
 export default function AccountingPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -266,7 +268,7 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
             className="input-field ps-10"
           />
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+        <button onClick={openCreate} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'إنشاء القيود معطل مؤقتًا للاختبار' : 'Journal creation temporarily disabled for testing'}>
           <Plus className="w-4 h-4" />
           {lang === 'ar' ? 'حساب جديد' : 'New Account'}
         </button>
@@ -466,6 +468,10 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.001 && totalDebit > 0;
 
   async function handleSave() {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      setError(lang === 'ar' ? 'حفظ القيود معطل مؤقتًا حتى اكتمال الاختبار على قاعدة تطوير معزولة.' : 'Journal saves are disabled until isolated development-database tests are complete.');
+      return;
+    }
     if (!profile?.tenant_id) return;
     if (!isBalanced) {
       setError(lang === 'ar' ? 'القيد غير متوازن - مجموع المدين يجب أن يساوي مجموع الدائن' : 'Entry not balanced — total debit must equal total credit');
@@ -524,6 +530,10 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
   }
 
   async function postEntry(entry: JournalEntry) {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      alert(lang === 'ar' ? 'ترحيل القيود معطل حتى اجتياز اختبارات قاعدة التطوير المعزولة.' : 'Journal posting is disabled until isolated development-database tests pass.');
+      return;
+    }
     if (!profile) return;
     const { data, error } = await supabase.rpc('post_journal_entry', { p_entry_id: entry.id });
     if (error) {
@@ -539,6 +549,7 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
   }
 
   async function cancelEntry(entry: JournalEntry) {
+    if (!ACCOUNTING_WRITES_ENABLED) return;
     if (!confirm(lang === 'ar' ? 'إلغاء القيد؟' : 'Cancel entry?')) return;
     const { error } = await supabase
       .from('journal_entries')
@@ -548,6 +559,10 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
   }
 
   async function reverseEntry(entry: JournalEntry) {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      alert(lang === 'ar' ? 'عكس القيود معطل مؤقتًا حتى اكتمال الاختبارات.' : 'Journal reversals are disabled until testing is complete.');
+      return;
+    }
     const reason = prompt(lang === 'ar' ? 'سبب عكس القيد:' : 'Reversal reason:');
     if (!reason) return;
     const { data, error } = await supabase.rpc('reverse_journal_entry', {
@@ -616,16 +631,16 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
                       <div className="flex gap-1 justify-end">
                         {entry.status === 'draft' && (
                           <>
-                            <button onClick={() => postEntry(entry)} className="btn-secondary !p-1.5 text-success-600" title={lang === 'ar' ? 'ترحيل' : 'Post'}>
+                            <button onClick={() => postEntry(entry)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-success-600 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'الترحيل معطل مؤقتًا للاختبار' : 'Posting temporarily disabled for testing'}>
                               <CheckCircle2 className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => cancelEntry(entry)} className="btn-secondary !p-1.5 text-error-500" title={t('common.cancel')}>
+                            <button onClick={() => cancelEntry(entry)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'الإلغاء معطل مؤقتًا للاختبار' : 'Cancellation temporarily disabled for testing'}>
                               <XCircle className="w-3.5 h-3.5" />
                             </button>
                           </>
                         )}
                         {entry.status === 'posted' && (
-                          <button onClick={() => reverseEntry(entry)} className="btn-secondary !p-1.5 text-accent-600" title={lang === 'ar' ? 'عكس القيد' : 'Reverse'}>
+                          <button onClick={() => reverseEntry(entry)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-accent-600 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'عكس القيد معطل مؤقتًا للاختبار' : 'Reversal temporarily disabled for testing'}>
                             <Lock className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -756,7 +771,7 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
 
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving || !isBalanced} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !isBalanced || !ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {t('common.save')}
             </button>
