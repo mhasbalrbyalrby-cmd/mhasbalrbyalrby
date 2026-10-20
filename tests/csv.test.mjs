@@ -44,9 +44,10 @@ test('exports Arabic as UTF-8 and neutralizes spreadsheet formulas', async () =>
   try {
     exportToCSV('contacts', ['الاسم', 'ملاحظة'], [['علي', '=1+1'], ['سارة', '  @SUM(A1:A2)']]);
     assert.equal(clicked, true);
-    assert.match(await capturedBlob.text(), /^\uFEFF/);
-    assert.match(await capturedBlob.text(), /علي,'=1\+1/);
-    assert.match(await capturedBlob.text(), /سارة,'  @SUM\(A1:A2\)//);
+    const exported = await capturedBlob.text();
+    assert.match(exported, /^\uFEFF/);
+    assert.match(exported, /علي,'=1\+1/);
+    assert.match(exported, /سارة,'  @SUM\(A1:A2\)/);
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
