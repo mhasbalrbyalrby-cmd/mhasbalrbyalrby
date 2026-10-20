@@ -27,8 +27,8 @@ function escapeCSV(value: string | number | null): string {
   const original = String(value);
   // Prevent spreadsheet formula injection in exported cells. CSV quoting alone
   // does not stop Excel/LibreOffice from evaluating formula-like values.
-  const str = /^[\\t\\r\\n ]*[=+\\-@]/.test(original) ? `'${original}` : original;
-  if (/[,"\\r\\n]/.test(str)) {
+  const str = /^[\t\r\n ]*[=+\-@]/.test(original) ? `'${original}` : original;
+  if (/[,"\r\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
