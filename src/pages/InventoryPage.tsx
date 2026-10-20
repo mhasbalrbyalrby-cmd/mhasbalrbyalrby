@@ -3,7 +3,7 @@ import BarcodeScanner from '@/components/BarcodeScanner';
 import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
+import type { Product, Warehouse, UnitOfMeasure } from '@/types/database';
 import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import StockMovementsPage from '@/pages/StockMovementsPage';
