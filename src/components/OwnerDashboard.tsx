@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabase';
 import { OwnerAccount } from '../types/owner';
 
 export const OwnerDashboard: React.FC = () => {
