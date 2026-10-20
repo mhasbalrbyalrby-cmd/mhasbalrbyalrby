@@ -473,11 +473,15 @@ export interface ExchangeTransfer {
   beneficiary_name: string;
   beneficiary_phone: string | null;
   amount: number;
+  currency: string;
   amount_base: number | null;
   cash_currency: string | null;
   exchange_rate: number | null;
   commission: number;
   commission_currency: string;
+  commission_type: 'fixed' | 'percentage' | string;
+  commission_bearer: 'sender' | 'beneficiary' | string;
+  direction: 'outgoing' | 'incoming' | string;
   agent_id: string | null;
   date: string;
   status: TransferStatus;
@@ -562,4 +566,47 @@ export interface ZakatRecord {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+
+// Inheritance module record shapes used by InheritancePage.
+export interface Estate {
+  id: string;
+  tenant_id: string;
+  deceased_name: string;
+  date_of_death: string;
+  total_assets: number;
+  total_liabilities: number;
+  net_estate: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface Heir {
+  id: string;
+  tenant_id: string;
+  estate_id: string;
+  heir_name: string;
+  relationship: string;
+  share_fraction: string;
+  calculated_amount: number;
+  is_distributed: boolean;
+  created_at: string;
+}
+
+export interface PartnerFamily {
+  id: string;
+  tenant_id: string;
+  person_name: string;
+  person_name_ar: string | null;
+  relationship: string | null;
+  gender: string | null;
+  birth_date: string | null;
+  national_id: string | null;
+  phone: string | null;
+  notes: string | null;
+  is_deceased: boolean;
+  date_of_death: string | null;
+  created_by: string | null;
+  created_at: string;
 }
