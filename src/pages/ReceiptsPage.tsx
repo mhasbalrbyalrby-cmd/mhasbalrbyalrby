@@ -275,6 +275,7 @@ export default function ReceiptsPage() {
                 <option value="payment">{lang === 'ar' ? 'صرف' : 'Payment'}</option>
                 <option value="transfer">{lang === 'ar' ? 'تحويل' : 'Transfer'}</option>
               </select>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{lang === 'ar' ? 'القبض لتسجيل مبلغ وارد، والصرف لمبلغ صادر، والتحويل لنقل مبلغ بين الحسابات وفق إعدادات النظام.' : 'Receipt records incoming money, payment records outgoing money, and transfer records movement between accounts as configured.'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{t('common.date')}</label>
@@ -306,6 +307,7 @@ export default function ReceiptsPage() {
                 <option value="">{lang === 'ar' ? 'اختر' : 'Select'}</option>
                 {parties.map((p) => <option key={p.id} value={p.id}>{lang === 'ar' ? p.name_ar ?? p.name : p.name}</option>)}
               </select>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{lang === 'ar' ? 'اختر الطرف المرتبط بهذه الحركة، ثم اربط الفاتورة إن كانت الحركة تخص فاتورة محددة.' : 'Choose the party related to this transaction, then link an invoice if applicable.'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الفاتورة' : 'Invoice'}</label>
@@ -326,6 +328,7 @@ export default function ReceiptsPage() {
                 <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} — {lang === 'ar' ? a.name_ar ?? a.name : a.name}</option>)}
               </select>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{lang === 'ar' ? 'الحساب اختياري هنا؛ اختر الحساب الصحيح إذا أردت ربط الحركة به.' : 'Account is optional here; choose the correct account if this transaction should be linked to it.'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الوردية' : 'Shift'}</label>
@@ -333,6 +336,7 @@ export default function ReceiptsPage() {
                 <option value="">{lang === 'ar' ? 'بدون' : 'None'}</option>
                 {shifts.map((s) => <option key={s.id} value={s.id}>{s.start_time.slice(0, 16).replace('T', ' ')}</option>)}
               </select>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{lang === 'ar' ? 'اربط الحركة بالوردية المفتوحة التي تمت خلالها، أو اتركها بدون ربط إن لم تنطبق.' : 'Link the transaction to the open shift when it occurred, or leave blank if not applicable.'}</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
