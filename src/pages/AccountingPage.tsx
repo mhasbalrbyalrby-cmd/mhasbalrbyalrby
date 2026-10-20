@@ -389,7 +389,7 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {t('common.save')}
             </button>
