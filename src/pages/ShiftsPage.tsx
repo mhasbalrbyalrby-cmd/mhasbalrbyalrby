@@ -8,6 +8,8 @@ import {
   Clock, Plus, Loader2, AlertCircle, Play, Square, XCircle,
 } from 'lucide-react';
 
+const SHIFT_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function ShiftsPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -39,6 +41,7 @@ export default function ShiftsPage() {
   }
 
   async function handleOpen() {
+    if (!SHIFT_WRITES_ENABLED) { setError(lang === 'ar' ? 'فتح الورديات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Opening shifts is temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id || !profile.id) return;
     setSaving(true); setError('');
     try {
@@ -65,6 +68,7 @@ export default function ShiftsPage() {
   }
 
   async function handleClose() {
+    if (!SHIFT_WRITES_ENABLED) { setError(lang === 'ar' ? 'إغلاق الورديات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Closing shifts is temporarily disabled until isolated database tests pass.'); return; }
     if (!closingShift || !profile) return;
     setSaving(true); setError('');
     try {
@@ -84,6 +88,7 @@ export default function ShiftsPage() {
   }
 
   async function cancelShift(shift: Shift) {
+    if (!SHIFT_WRITES_ENABLED) { setError(lang === 'ar' ? 'إلغاء الورديات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Cancelling shifts is temporarily disabled until isolated database tests pass.'); return; }
     if (!confirm(lang === 'ar' ? 'إلغاء الوردية؟' : 'Cancel shift?')) return;
     const { error } = await supabase.from('shifts').update({ status: 'cancelled', end_time: new Date().toISOString() }).eq('id', shift.id);
     if (!error) loadData();
@@ -109,7 +114,7 @@ export default function ShiftsPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'إدارة ورديات العمل' : 'Work shift management'}</p>
           </div>
         </div>
-        <button onClick={openCreate} disabled={hasOpenShift} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+        <button onClick={openCreate} disabled={hasOpenShift || !SHIFT_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-50">
           <Plus className="w-4 h-4" />
           {lang === 'ar' ? 'فتح وردية' : 'Open Shift'}
         </button>
@@ -155,10 +160,10 @@ export default function ShiftsPage() {
               </div>
               {shift.status === 'open' && (
                 <div className="flex gap-2 mt-3 pt-3 border-t border-[var(--color-border)]">
-                  <button onClick={() => openClose(shift)} className="btn-secondary text-sm flex items-center gap-1 text-success-600">
+                  <button onClick={() => openClose(shift)} disabled={!SHIFT_WRITES_ENABLED} className="btn-secondary text-sm flex items-center gap-1 text-success-600">
                     <Square className="w-3.5 h-3.5" />{lang === 'ar' ? 'إغلاق' : 'Close'}
                   </button>
-                  <button onClick={() => cancelShift(shift)} className="btn-secondary text-sm flex items-center gap-1 text-error-500">
+                  <button onClick={() => cancelShift(shift)} disabled={!SHIFT_WRITES_ENABLED} className="btn-secondary text-sm flex items-center gap-1 text-error-500">
                     <XCircle className="w-3.5 h-3.5" />{t('common.cancel')}
                   </button>
                 </div>
@@ -177,7 +182,7 @@ export default function ShiftsPage() {
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleOpen} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'فتح' : 'Open'}</button>
+            <button onClick={handleOpen} disabled={saving || !SHIFT_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'فتح' : 'Open'}</button>
           </div>
         </div>
       </Modal>
@@ -195,7 +200,7 @@ export default function ShiftsPage() {
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setClosingShift(null)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleClose} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'إغلاق' : 'Close'}</button>
+            <button onClick={handleClose} disabled={saving || !SHIFT_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{lang === 'ar' ? 'إغلاق' : 'Close'}</button>
           </div>
         </div>
       </Modal>
