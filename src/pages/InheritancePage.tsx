@@ -8,6 +8,8 @@ import { exportToCSV } from '@/lib/csv';
 import { ScrollText, Plus, Loader2, AlertCircle, Download, Trash2, Users, UserPlus, Heart, Pencil } from 'lucide-react';
 import Modal from '@/components/Modal';
 
+const INHERITANCE_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function InheritancePage() {
   const { lang } = useI18n();
   const { profile } = useAuth();
@@ -53,6 +55,7 @@ export default function InheritancePage() {
   const netEstate = Number(form.total_assets) - Number(form.total_liabilities);
 
   async function handleSave() {
+    if (!INHERITANCE_WRITES_ENABLED) { setError(ar ? 'الكتابة معطلة مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Writes are temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id || !form.deceased_name.trim() || !form.date_of_death) return;
     setSaving(true); setError('');
     try {
@@ -74,6 +77,7 @@ export default function InheritancePage() {
   }
 
   async function addHeir() {
+    if (!INHERITANCE_WRITES_ENABLED) { setError(ar ? 'إضافة الورثة معطلة مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Adding heirs is temporarily disabled until isolated database tests pass.'); return; }
     if (!selectedEstate || !profile?.tenant_id) return;
     if (!heirForm.heir_name.trim() || !heirForm.share_fraction.trim()) return;
     const fraction = parseFloat(heirForm.share_fraction);
@@ -94,6 +98,7 @@ export default function InheritancePage() {
   }
 
   async function deleteEstate(e: Estate) {
+    if (!INHERITANCE_WRITES_ENABLED) { setError(ar ? 'الحذف معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Deletion is temporarily disabled until isolated database tests pass.'); return; }
     if (!confirm(ar ? 'حذف التركة والورثة المرتبطين؟' : 'Delete estate and related heirs?')) return;
     await supabase.from('heirs').delete().eq('estate_id', e.id);
     await supabase.from('estates').delete().eq('id', e.id);
@@ -119,6 +124,7 @@ export default function InheritancePage() {
   }
 
   async function handlePartnerSave() {
+    if (!INHERITANCE_WRITES_ENABLED) { setError(ar ? 'الحفظ معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Saving is temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id || !partnerForm.person_name.trim()) return;
     setPartnerSaving(true); setError('');
     try {
@@ -150,6 +156,7 @@ export default function InheritancePage() {
   }
 
   async function deletePartner(p: PartnerFamily) {
+    if (!INHERITANCE_WRITES_ENABLED) { setError(ar ? 'الحذف معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Deletion is temporarily disabled until isolated database tests pass.'); return; }
     if (!confirm(ar ? 'حذف هذا السجل؟' : 'Delete this record?')) return;
     const { error: e } = await supabase.from('partners_family').delete().eq('id', p.id);
     if (e) { setError(e.message); return; }
@@ -189,9 +196,9 @@ export default function InheritancePage() {
         <div className="flex gap-2">
           <button onClick={handleExport} disabled={pageTab === 'estates' ? estates.length === 0 : partners.length === 0} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{ar ? 'تصدير' : 'Export'}</button>
           {pageTab === 'estates' ? (
-            <button onClick={() => { setForm({ deceased_name: '', date_of_death: '', total_assets: 0, total_liabilities: 0, notes: '' }); setError(''); setModalOpen(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'تركة جديدة' : 'New Estate'}</button>
+            <button onClick={() => { setForm({ deceased_name: '', date_of_death: '', total_assets: 0, total_liabilities: 0, notes: '' }); setError(''); setModalOpen(true); }} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'تركة جديدة' : 'New Estate'}</button>
           ) : (
-            <button onClick={openCreatePartner} className="btn-primary flex items-center gap-2"><UserPlus className="w-4 h-4" />{ar ? 'إضافة شخص' : 'Add Person'}</button>
+            <button onClick={openCreatePartner} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-primary flex items-center gap-2"><UserPlus className="w-4 h-4" />{ar ? 'إضافة شخص' : 'Add Person'}</button>
           )}
         </div>
       </div>
@@ -224,7 +231,7 @@ export default function InheritancePage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-primary-600">{e.net_estate?.toFixed(2) ?? '0.00'}</span>
-                      <button onClick={() => deleteEstate(e)} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => deleteEstate(e)} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-3 text-sm mb-3">
@@ -235,7 +242,7 @@ export default function InheritancePage() {
                   <div className="border-t border-[var(--color-border)] pt-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-[var(--color-text-muted)]"><Users className="w-4 h-4 inline ms-1" />{ar ? 'الورثة' : 'Heirs'}</span>
-                      <button onClick={() => { setSelectedEstate(e); setHeirForm({ heir_name: '', relationship: '', share_fraction: '' }); setHeirModalOpen(true); }} className="btn-secondary text-xs flex items-center gap-1"><Plus className="w-3 h-3" />{ar ? 'وارث' : 'Heir'}</button>
+                      <button onClick={() => { setSelectedEstate(e); setHeirForm({ heir_name: '', relationship: '', share_fraction: '' }); setHeirModalOpen(true); }} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-secondary text-xs flex items-center gap-1"><Plus className="w-3 h-3" />{ar ? 'وارث' : 'Heir'}</button>
                     </div>
                     {estateHeirs(e.id).length === 0 ? (
                       <p className="text-xs text-[var(--color-text-muted)]">{ar ? 'لا يوجد ورثة مسجلون' : 'No heirs recorded'}</p>
@@ -291,8 +298,8 @@ export default function InheritancePage() {
                           : <span className="text-xs px-2 py-0.5 rounded-full bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400">{ar ? 'على قيد الحياة' : 'Alive'}</span>}
                       </td>
                       <td className="py-2 px-3 text-end">
-                        <button onClick={() => openEditPartner(p)} className="btn-secondary !p-1.5" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => deletePartner(p)} className="btn-secondary !p-1.5 text-error-500 ms-1" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEditPartner(p)} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-secondary !p-1.5" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => deletePartner(p)} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500 ms-1" title={ar ? 'حذف' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button>
                       </td>
                     </tr>
                   ))}
@@ -314,7 +321,7 @@ export default function InheritancePage() {
           </div>
           <div className="p-3 rounded-lg bg-[var(--color-bg)] flex justify-between"><span className="text-sm font-medium text-[var(--color-text-muted)]">{ar ? 'صافي التركة' : 'Net Estate'}</span><span className="font-bold text-primary-600">{netEstate.toFixed(2)}</span></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'ملاحظات' : 'Notes'}</label><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input-field min-h-16" rows={2} /></div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handleSave} disabled={saving || !INHERITANCE_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
 
@@ -323,7 +330,7 @@ export default function InheritancePage() {
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'اسم الوارث' : 'Heir Name'} *</label><input type="text" value={heirForm.heir_name} onChange={(e) => setHeirForm({ ...heirForm, heir_name: e.target.value })} className="input-field" /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'صلة القرابة' : 'Relationship'}</label><input type="text" value={heirForm.relationship} onChange={(e) => setHeirForm({ ...heirForm, relationship: e.target.value })} className="input-field" placeholder={ar ? 'ابن/زوجة/أب...' : 'Son/Wife/Father...'} /></div>
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'النصيب (كسر)' : 'Share (fraction)'} *</label><input type="text" value={heirForm.share_fraction} onChange={(e) => setHeirForm({ ...heirForm, share_fraction: e.target.value })} className="input-field" placeholder={ar ? 'مثل: 0.5 / 1/3 / 0.25' : 'e.g. 0.5 / 1/3 / 0.25'} /></div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setHeirModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={addHeir} className="btn-primary">{ar ? 'إضافة' : 'Add'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setHeirModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={addHeir} disabled={!INHERITANCE_WRITES_ENABLED} className="btn-primary">{ar ? 'إضافة' : 'Add'}</button></div>
         </div>
       </Modal>
 
@@ -364,7 +371,7 @@ export default function InheritancePage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'تاريخ الوفاة' : 'Date of Death'}</label><input type="date" value={partnerForm.date_of_death} onChange={(e) => setPartnerForm({ ...partnerForm, date_of_death: e.target.value })} className="input-field" /></div>
           )}
           <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'ملاحظات' : 'Notes'}</label><textarea value={partnerForm.notes} onChange={(e) => setPartnerForm({ ...partnerForm, notes: e.target.value })} className="input-field min-h-16" rows={2} /></div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setPartnerModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handlePartnerSave} disabled={partnerSaving} className="btn-primary flex items-center gap-2">{partnerSaving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setPartnerModalOpen(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={handlePartnerSave} disabled={partnerSaving || !INHERITANCE_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{partnerSaving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
     </div>
