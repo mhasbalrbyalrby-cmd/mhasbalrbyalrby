@@ -5,10 +5,13 @@ import { supabase } from '../lib/supabase';
 import type { Party, PartyRole, PartyRoleType } from './database';
 import Modal from '../components/Modal';
 import ContactPickerButton from '../components/ContactPickerButton';
+import { exportToCSV } from '../lib/csv';
 import {
   Users, Plus, Search, Pencil, Trash2, Phone, Mail, Loader2, Download,
   AlertCircle, User, Building2, CheckCircle2,
 } from 'lucide-react';
+
+const CONTACTS_WRITES_ENABLED = false; // Read-only until isolated database tests are approved.
 
 export default function ContactsPage() {
   const { t, lang } = useI18n();
@@ -109,6 +112,10 @@ export default function ContactsPage() {
   }
 
   async function handleSave() {
+    if (!CONTACTS_WRITES_ENABLED) {
+      setError(lang === 'ar' ? 'الحفظ معطل مؤقتًا حتى اجتياز اختبارات البيئة المعزولة.' : 'Saving is temporarily disabled pending isolated-environment tests.');
+      return;
+    }
     if (!form.name.trim()) {
       setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required');
       return;
@@ -185,44 +192,25 @@ export default function ContactsPage() {
   }
 
   async function handleDelete(party: Party) {
+    if (!CONTACTS_WRITES_ENABLED) return;
     if (!confirm(lang === 'ar' ? 'هل أنت متأكد من الحذف؟' : 'Are you sure?')) return;
     const { error } = await supabase.from('parties').delete().eq('id', party.id);
     if (!error) await loadParties();
   }
 
   function exportContactsCsv() {
-    const headers = lang === 'ar'
-      ? ['الاسم', 'الاسم بالعربية', 'النوع', 'الهاتف', 'البريد الإلكتروني', 'العنوان', 'المدينة', 'رقم الهوية', 'الأدوار', 'ملاحظات']
-      : ['name', 'name_ar', 'type', 'phone', 'email', 'address', 'city', 'id_number', 'roles', 'notes'];
-    const escapeCsv = (value: unknown) => {
-      const textValue = String(value ?? '');
-      return /[",\\r\\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
-    };
-    const rows = filtered.map((party) => [
-      party.name,
-      party.name_ar ?? '',
-      party.type,
-      party.phone ?? '',
-      party.email ?? '',
-      party.address ?? '',
-      party.city ?? '',
-      party.id_number ?? '',
-      (partyRoles[party.id] ?? []).map((role) => role.role).join('|'),
-      party.notes ?? '',
-    ]);
-    const csv = '\\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\\r\\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `contacts-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
+    const headers = lang === 'ar'
+      ? ['الاسم', 'الاسم بالعربية', 'النوع', 'الهاتف', 'البريد الإلكتروني', 'العنوان', 'المدينة', 'رقم الهوية', 'الأدوار', 'ملاحظات']
+      : ['name', 'name_ar', 'type', 'phone', 'email', 'address', 'city', 'id_number', 'roles', 'notes'];
+    const rows = filtered.map((party) => [
+      party.name, party.name_ar ?? '', party.type, party.phone ?? '', party.email ?? '',
+      party.address ?? '', party.city ?? '', party.id_number ?? '',
+      (partyRoles[party.id] ?? []).map((role) => role.role).join('|'), party.notes ?? '',
+    ]);
+    exportToCSV(`contacts-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+  }
 
-  const filtered = parties.filter((p) => {
+  const filtered = parties.filter((p) => {
     const matchSearch = !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       (p.name_ar ?? '').includes(search) ||
@@ -278,7 +266,7 @@ export default function ContactsPage() {
             roles: (partyRoles[p.id] ?? []).map((r) => r.role).join('|'),
           }));
           const headers = ['name','name_ar','type','phone','email','address','city','id_number','notes','roles'];
-          const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\\r\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+          const esc = (v: unknown) => { const original = String(v ?? ''); const safe = /^[\\t\\r\\n ]*[=+\\-@]/.test(original) ? `'${original}` : original; return /[",\\r\\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe; };
           const blob = new Blob(['\\uFEFF' + [headers, ...rows.map((row) => headers.map((h) => (row as Record<string,string>)[h] ?? ''))].map((row) => row.map(esc).join(',')).join('\\r\\n')], { type: 'text/csv;charset=utf-8;' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -290,7 +278,7 @@ export default function ContactsPage() {
             <Download className="w-4 h-4" />
             {lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
           </button>
-          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+          <button onClick={openCreate} disabled={!CONTACTS_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40">
             <Plus className="w-4 h-4" />
             {t('common.create')}
           </button>
@@ -354,10 +342,10 @@ export default function ContactsPage() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => openEdit(party)} className="btn-secondary !p-1.5">
+                    <button onClick={() => openEdit(party)} disabled={!CONTACTS_WRITES_ENABLED} aria-label={lang === 'ar' ? 'التعديل معطل مؤقتًا' : 'Editing temporarily disabled'} className="btn-secondary !p-1.5 disabled:opacity-40">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => handleDelete(party)} className="btn-secondary !p-1.5 text-error-500">
+                    <button onClick={() => handleDelete(party)} disabled={!CONTACTS_WRITES_ENABLED} aria-label={lang === 'ar' ? 'الحذف معطل مؤقتًا' : 'Deletion temporarily disabled'} className="btn-secondary !p-1.5 text-error-500 disabled:opacity-40">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -521,7 +509,7 @@ export default function ContactsPage() {
             <button onClick={() => setModalOpen(false)} className="btn-secondary">
               {t('common.cancel')}
             </button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !CONTACTS_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {t('common.save')}
             </button>
