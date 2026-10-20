@@ -3,7 +3,7 @@ import { AlertCircle, ArrowLeftRight, ClipboardCheck, Loader2, PackagePlus, Refr
 import { useAuth } from '@/lib/auth-context';
 import { useI18n } from '@/lib/i18n-context';
 import { supabase } from '@/lib/supabase';
-import type { Product, Warehouse } from '@/lib/database';
+import type { Product, Warehouse } from '@/types/database';
 
 type DocType = 'stock_in' | 'stock_out' | 'transfer' | 'count_adjustment';
 type DocStatus = 'draft' | 'posted' | 'cancelled';
