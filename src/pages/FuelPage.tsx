@@ -34,6 +34,8 @@ interface FuelTransaction {
   created_at: string;
 }
 
+const FUEL_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function FuelPage() {
   const { lang } = useI18n();
   const { profile } = useAuth();
@@ -68,6 +70,7 @@ export default function FuelPage() {
   const fuelTotal = fForm.liters * fForm.price_per_liter;
 
   async function saveVehicle() {
+    if (!FUEL_WRITES_ENABLED) { setError(ar ? 'تعديل المركبات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Vehicle changes are temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id) return;
     setSaving(true); setError('');
     try {
@@ -89,6 +92,7 @@ export default function FuelPage() {
   }
 
   async function saveFuel() {
+    if (!FUEL_WRITES_ENABLED) { setError(ar ? 'تسجيل الوقود معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Fuel recording is temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id) return;
     if (fForm.liters <= 0) { setError(ar ? 'الكمية يجب أن تكون أكبر من صفر' : 'Liters must be > 0'); return; }
     setSaving(true); setError('');
@@ -134,8 +138,8 @@ export default function FuelPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} disabled={transactions.length === 0} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{ar ? 'تصدير' : 'Export'}</button>
-          <button onClick={() => { setVForm({ plate_number: '', make: '', model: '', year: 0, fuel_type: 'diesel', tank_capacity: 0 }); setError(''); setVehicleModal(true); }} className="btn-secondary flex items-center gap-2"><Car className="w-4 h-4" />{ar ? 'مركبة' : 'Vehicle'}</button>
-          <button onClick={() => { setFForm({ vehicle_id: '', date: new Date().toISOString().slice(0, 10), liters: 0, price_per_liter: 0, odometer: 0, station: '', notes: '' }); setError(''); setFuelModal(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'تعبئة' : 'Refuel'}</button>
+          <button disabled={!FUEL_WRITES_ENABLED} onClick={() => { setVForm({ plate_number: '', make: '', model: '', year: 0, fuel_type: 'diesel', tank_capacity: 0 }); setError(''); setVehicleModal(true); }} className="btn-secondary flex items-center gap-2"><Car className="w-4 h-4" />{ar ? 'مركبة' : 'Vehicle'}</button>
+          <button disabled={!FUEL_WRITES_ENABLED} onClick={() => { setFForm({ vehicle_id: '', date: new Date().toISOString().slice(0, 10), liters: 0, price_per_liter: 0, odometer: 0, station: '', notes: '' }); setError(''); setFuelModal(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{ar ? 'تعبئة' : 'Refuel'}</button>
         </div>
       </div>
 
@@ -220,7 +224,7 @@ export default function FuelPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'نوع الوقود' : 'Fuel Type'}</label><select value={vForm.fuel_type} onChange={(e) => setVForm({ ...vForm, fuel_type: e.target.value })} className="input-field"><option value="diesel">{ar ? 'ديزل' : 'Diesel'}</option><option value="petrol">{ar ? 'بنزين' : 'Petrol'}</option><option value="gas">{ar ? 'غاز' : 'Gas'}</option></select></div>
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'سعة الخزان' : 'Tank Capacity'}</label><input type="number" value={vForm.tank_capacity || ''} onChange={(e) => setVForm({ ...vForm, tank_capacity: Number(e.target.value) })} className="input-field" /></div>
           </div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setVehicleModal(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={saveVehicle} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setVehicleModal(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={saveVehicle} disabled={saving || !FUEL_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
 
@@ -237,7 +241,7 @@ export default function FuelPage() {
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'العدّاد' : 'Odometer'}</label><input type="number" value={fForm.odometer || ''} onChange={(e) => setFForm({ ...fForm, odometer: Number(e.target.value) })} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{ar ? 'المحطة' : 'Station'}</label><input type="text" value={fForm.station} onChange={(e) => setFForm({ ...fForm, station: e.target.value })} className="input-field" /></div>
           </div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setFuelModal(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={saveFuel} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setFuelModal(false)} className="btn-secondary">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={saveFuel} disabled={saving || !FUEL_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ' : 'Save'}</button></div>
         </div>
       </Modal>
     </div>
