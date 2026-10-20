@@ -11,6 +11,8 @@ import {
   XCircle, Send, Check, Download,
 } from 'lucide-react';
 
+const EXCHANGE_WRITES_ENABLED = false; // Keep writes disabled until isolated database tests pass.
+
 export default function ExchangePage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -105,6 +107,7 @@ export default function ExchangePage() {
   }
 
   async function handleSaveRate() {
+    if (!EXCHANGE_WRITES_ENABLED) { setRateError(lang === 'ar' ? 'تعديل أسعار الصرف معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Exchange-rate changes are temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id) return;
     if (!rateForm.from_currency || !rateForm.to_currency) {
       setRateError(lang === 'ar' ? 'العملتان مطلوبتان' : 'Both currencies required');
@@ -148,6 +151,7 @@ export default function ExchangePage() {
     : amountInCashCurrency;
 
   async function handleSave() {
+    if (!EXCHANGE_WRITES_ENABLED) { setError(lang === 'ar' ? 'إنشاء الحوالات معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Transfer creation is temporarily disabled until isolated database tests pass.'); return; }
     if (!profile?.tenant_id) return;
     if (!form.sender_name.trim() || !form.beneficiary_name.trim()) { setError(lang === 'ar' ? 'اسم المرسل والمستفيد مطلوبان' : 'Sender and beneficiary names required'); return; }
     if (form.amount <= 0) { setError(lang === 'ar' ? 'المبلغ يجب أن يكون أكبر من صفر' : 'Amount must be > 0'); return; }
@@ -194,6 +198,7 @@ export default function ExchangePage() {
   }
 
   async function updateStatus(tr: ExchangeTransfer, status: TransferStatus) {
+    if (!EXCHANGE_WRITES_ENABLED) { setError(lang === 'ar' ? 'تغيير حالة الحوالة معطل مؤقتاً حتى اجتياز اختبارات قاعدة تطوير معزولة.' : 'Transfer status changes are temporarily disabled until isolated database tests pass.'); return; }
     const tid = profile?.tenant_id;
     if (!tid) return;
     const updates: Partial<ExchangeTransfer> = { status };
@@ -232,7 +237,7 @@ export default function ExchangePage() {
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? 'الحوالات والصرافة' : 'Money transfers and exchange'}</p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'حوالة جديدة' : 'New Transfer'}</button>
+        <button onClick={openCreate} disabled={!EXCHANGE_WRITES_ENABLED} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'حوالة جديدة' : 'New Transfer'}</button>
         <button onClick={() => { exportToCSV(lang === 'ar' ? 'الحوالات' : 'transfers', lang === 'ar' ? ['رقم','مرسل','مستفيد','مبلغ','عملة','مقابل','عمولة','الصافي','الحالة'] : ['Number','Sender','Beneficiary','Amount','Currency','Base Amount','Commission','Net','Status'], transfers.map((tr) => [tr.transfer_number, tr.sender_name, tr.beneficiary_name, tr.amount.toFixed(2), tr.currency, (tr.amount_base ?? tr.amount).toFixed(2), tr.commission.toFixed(2), tr.commission_currency, tr.status])); }} disabled={transfers.length === 0} className="btn-secondary flex items-center gap-2"><Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير' : 'Export'}</button>
       </div>
 
@@ -248,7 +253,7 @@ export default function ExchangePage() {
           <option value="delivered">{lang === 'ar' ? 'مسلمة' : 'Delivered'}</option>
           <option value="cancelled">{lang === 'ar' ? 'ملغاة' : 'Cancelled'}</option>
         </select>
-        <button onClick={() => { setRateForm({ from_currency: 'SAR', to_currency: 'USD', rate: 0, date: new Date().toISOString().slice(0, 10) }); setRateError(''); setRateModalOpen(true); }} className="btn-secondary flex items-center gap-2">
+        <button disabled={!EXCHANGE_WRITES_ENABLED} onClick={() => { setRateForm({ from_currency: 'SAR', to_currency: 'USD', rate: 0, date: new Date().toISOString().slice(0, 10) }); setRateError(''); setRateModalOpen(true); }} className="btn-secondary flex items-center gap-2">
           {lang === 'ar' ? 'أسعار الصرف' : 'Exchange Rates'}
         </button>
       </div>
@@ -295,9 +300,9 @@ export default function ExchangePage() {
                   <td className="py-2 px-3"><span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[tr.status]}`}>{tr.status}</span></td>
                   <td className="py-2 px-3 text-end">
                     <div className="flex gap-1 justify-end">
-                      {tr.status === 'pending' && <button onClick={() => updateStatus(tr, 'sent')} className="btn-secondary !p-1.5 text-secondary-600" title={lang === 'ar' ? 'إرسال' : 'Send'}><Send className="w-3.5 h-3.5" /></button>}
-                      {tr.status === 'sent' && <button onClick={() => updateStatus(tr, 'delivered')} className="btn-secondary !p-1.5 text-success-600" title={lang === 'ar' ? 'تسليم' : 'Deliver'}><Check className="w-3.5 h-3.5" /></button>}
-                      {(tr.status === 'pending' || tr.status === 'sent') && <button onClick={() => updateStatus(tr, 'cancelled')} className="btn-secondary !p-1.5 text-error-500" title={t('common.cancel')}><XCircle className="w-3.5 h-3.5" /></button>}
+                      {tr.status === 'pending' && <button onClick={() => updateStatus(tr, 'sent')} disabled={!EXCHANGE_WRITES_ENABLED} className="btn-secondary !p-1.5 text-secondary-600" title={lang === 'ar' ? 'إرسال' : 'Send'}><Send className="w-3.5 h-3.5" /></button>}
+                      {tr.status === 'sent' && <button onClick={() => updateStatus(tr, 'delivered')} disabled={!EXCHANGE_WRITES_ENABLED} className="btn-secondary !p-1.5 text-success-600" title={lang === 'ar' ? 'تسليم' : 'Deliver'}><Check className="w-3.5 h-3.5" /></button>}
+                      {(tr.status === 'pending' || tr.status === 'sent') && <button onClick={() => updateStatus(tr, 'cancelled')} disabled={!EXCHANGE_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500" title={t('common.cancel')}><XCircle className="w-3.5 h-3.5" /></button>}
                     </div>
                   </td>
                 </tr>
@@ -424,7 +429,7 @@ export default function ExchangePage() {
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
+            <button onClick={handleSave} disabled={saving || !EXCHANGE_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
           </div>
         </div>
       </Modal>
@@ -458,7 +463,7 @@ export default function ExchangePage() {
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setRateModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSaveRate} disabled={rateSaving} className="btn-primary flex items-center gap-2">{rateSaving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
+            <button onClick={handleSaveRate} disabled={rateSaving || !EXCHANGE_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{rateSaving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
           </div>
         </div>
       </Modal>
