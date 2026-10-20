@@ -24,4 +24,5 @@ jobs:
       - name: TypeScript typecheck
         run: npm run typecheck
       - name: CSV regression tests
+        if: always()
         run: node --test tests/csv.test.mjs
