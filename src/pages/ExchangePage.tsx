@@ -229,6 +229,7 @@ export default function ExchangePage() {
 
   return (
     <div className="space-y-6">
+      <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">{lang === 'ar' ? 'وضع القراءة فقط: تم تعطيل إنشاء الحوالات وتغيير حالاتها وتعديل أسعار الصرف مؤقتاً حتى نجاح اختبارات قاعدة تطوير معزولة. يمكنك الاستعراض والتصدير.' : 'Read-only mode: creating transfers, changing their status, and editing exchange rates are disabled until isolated database tests pass. Viewing and export remain available.'}</div>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center"><ArrowLeftRight className="w-5 h-5 text-white" /></div>
