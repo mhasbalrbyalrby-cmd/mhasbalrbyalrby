@@ -233,6 +233,28 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
 
   return (
     <div className="space-y-4">
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4" aria-labelledby="chart-guidance-title">
+        <h3 id="chart-guidance-title" className="font-semibold text-[var(--color-text)]">
+          {lang === 'ar' ? 'إرشادات مبسطة لدليل الحسابات' : 'Chart of Accounts — Quick Guide'}
+        </h3>
+        <div className="mt-2 space-y-2 text-sm text-[var(--color-text-muted)]">
+          <p>
+            {lang === 'ar'
+              ? 'الحساب الرئيسي (الأب): يُستخدم لتجميع الأرصدة وعرض إجمالي الحسابات التابعة، ولا تسجل عليه حركات مباشرة. عند إنشاء حساب للتجميع فقط، أزل علامة «قابل للترحيل».'
+              : 'Parent account: groups balances and summarizes its child accounts; do not post transactions directly to it. For a grouping-only account, turn off “Postable”.'}
+          </p>
+          <p>
+            {lang === 'ar'
+              ? 'الحساب الفرعي/التفصيلي: يُستخدم لتسجيل الحركات عندما يكون حساباً نهائياً معتمداً. فعّل «قابل للترحيل» للحساب التفصيلي فقط، واختر نوعه الصحيح (أصول، خصوم، حقوق ملكية، إيرادات، مصروفات).'
+              : 'Detail account: use it for transactions when it is an approved leaf account. Enable “Postable” only for detail accounts and choose the correct type (asset, liability, equity, revenue, or expense).'}
+          </p>
+          <p>
+            {lang === 'ar'
+              ? 'تنبيه: علامة «قابل للترحيل» تحدد الاختيار في واجهة القيود، ولا تثبت وحدها أن علاقة الأب/الابن أو منع الترحيل إلى الحساب الرئيسي مفروضة في قاعدة البيانات. يجب التحقق من مخطط الحسابات وقواعد الترحيل قبل اعتماد الحفظ الفعلي.'
+              : 'Note: “Postable” controls account selection in this UI; by itself it does not prove that parent-child relationships or parent-posting restrictions are enforced in the database. Verify the schema and posting rules before enabling live accounting writes.'}
+          </p>
+        </div>
+      </section>
       <div className="flex justify-between flex-wrap gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--color-text-muted)]" />
@@ -325,6 +347,11 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
           </div>
         )}
         <div className="space-y-4">
+          <div className="rounded-lg border border-[var(--color-border)] p-3 text-sm text-[var(--color-text-muted)]">
+            {lang === 'ar'
+              ? 'للتجميع فقط: اترك «قابل للترحيل» غير محدد. للحساب التفصيلي النهائي: حدده بعد التأكد من نوع الحساب ومخطط الدليل. لا تنشئ علاقة أب/ابن غير مدعومة في المخطط الحالي.'
+              : 'Grouping only: leave “Postable” unchecked. Final detail account: check it only after confirming the account type and chart design. Do not assume a parent-child relationship that the current schema does not support.'}
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">{lang === 'ar' ? 'الكود' : 'Code'} *</label>
