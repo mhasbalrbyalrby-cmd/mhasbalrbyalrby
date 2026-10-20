@@ -319,6 +319,7 @@ export default function ContactsPage() {
           <option value="employee">{lang === 'ar' ? 'موظفون' : 'Employees'}</option>
           <option value="agent">{lang === 'ar' ? 'وكلاء' : 'Agents'}</option>
         </select>
+        <p className="w-full text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'استخدم هذا الفلتر لعرض العملاء أو الموردين أو غيرهم حسب الدور المسجل؛ ويمكن للشخص الواحد امتلاك أكثر من دور.' : 'Use this filter to view customers, suppliers, or other contacts by assigned role. A contact may have more than one role.'}</p>
       </div>
 
       {filtered.length === 0 ? (
