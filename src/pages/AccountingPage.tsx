@@ -56,6 +56,7 @@ export default function AccountingPage() {
   }
 
   async function importDefaultChart() {
+    if (!ACCOUNTING_WRITES_ENABLED) { setLoadError(lang === 'ar' ? 'تعديل دليل الحسابات معطل مؤقتًا حتى اجتياز الاختبارات المعزولة.' : 'Chart mutations are temporarily disabled pending isolated tests.'); return; }
     setSeeding(true);
     setSeedMessage('');
     setLoadError('');
@@ -169,6 +170,7 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
   }
 
   async function handleSave() {
+    if (!ACCOUNTING_WRITES_ENABLED) { setError(lang === 'ar' ? 'تعديل دليل الحسابات معطل مؤقتًا حتى اجتياز الاختبارات المعزولة.' : 'Chart mutations are temporarily disabled pending isolated tests.'); return; }
     if (!form.code.trim() || !form.name.trim()) {
       setError(lang === 'ar' ? 'الكود والاسم مطلوبان' : 'Code and name are required');
       return;
@@ -208,6 +210,7 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
   }
 
   async function handleDelete(acc: ChartOfAccount) {
+    if (!ACCOUNTING_WRITES_ENABLED) return;
     if (!confirm(lang === 'ar' ? 'هل أنت متأكد؟' : 'Are you sure?')) return;
     const { error } = await supabase.from('chart_of_accounts').delete().eq('id', acc.id);
     if (!error) onChange();
@@ -281,7 +284,7 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
             {lang === 'ar' ? 'لا توجد حسابات في دليل هذه المؤسسة.' : 'No accounts exist in this organization chart yet.'}
           </p>
           {!search && (
-            <button type="button" onClick={onImportDefaults} disabled={importingDefaults} className="btn-primary mx-auto inline-flex items-center gap-2">
+            <button type="button" onClick={onImportDefaults} disabled={!ACCOUNTING_WRITES_ENABLED || importingDefaults} className="btn-primary mx-auto inline-flex items-center gap-2 disabled:opacity-40">
               {importingDefaults && <Loader2 className="h-4 w-4 animate-spin" />}
               {lang === 'ar' ? 'استيراد دليل الحسابات الافتراضي' : 'Import default chart of accounts'}
             </button>
@@ -322,10 +325,10 @@ function AccountsTab({ accounts, onChange, onImportDefaults, importingDefaults }
                   </td>
                   <td className="py-2 px-3 text-end">
                     <div className="flex gap-1 justify-end">
-                      <button onClick={() => openEdit(acc)} className="btn-secondary !p-1.5">
+                      <button onClick={() => openEdit(acc)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 disabled:opacity-40">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => handleDelete(acc)} className="btn-secondary !p-1.5 text-error-500">
+                      <button onClick={() => handleDelete(acc)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-error-500 disabled:opacity-40">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -591,7 +594,7 @@ function JournalsTab({ journals, accounts, onChange }: { journals: JournalEntry[
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+        <button onClick={openCreate} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40">
           <Plus className="w-4 h-4" />
           {lang === 'ar' ? 'قيد جديد' : 'New Entry'}
         </button>
