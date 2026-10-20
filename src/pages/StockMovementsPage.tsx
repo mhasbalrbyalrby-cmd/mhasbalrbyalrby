@@ -13,6 +13,7 @@ type StockDoc = {
   created_at: string; posted_at: string | null;
 };
 type Line = { product_id: string; quantity: string; unit_cost: string; counted_quantity: string };
+const STOCK_WRITES_ENABLED = false; // Read-only until isolated stock/accounting tests pass.
 const inputClass = 'input-field min-w-0';
 
 export default function StockMovementsPage() {
@@ -101,6 +102,7 @@ export default function StockMovementsPage() {
   }
 
   async function saveDraft() {
+    if (!STOCK_WRITES_ENABLED) { setError(ar ? 'حفظ حركات المخزون معطل مؤقتًا حتى اجتياز الاختبارات المعزولة.' : 'Stock movement writes are disabled pending isolated tests.'); return; }
     if (!tenant?.id || !canSave) return;
     setBusy(true); setError('');
     let createdId: string | null = null;
@@ -130,6 +132,7 @@ export default function StockMovementsPage() {
   }
 
   async function postDocument(doc: StockDoc) {
+    if (!STOCK_WRITES_ENABLED) return;
     if (!schemaReady || doc.status !== 'draft') return;
     const message = ar ? `هل تريد اعتماد وترحيل السند «${doc.document_number}»؟ لا يمكن تعديله بعد الترحيل.` : `Post document ${doc.document_number}? Posted documents cannot be edited.`;
     if (!window.confirm(message)) return;
@@ -152,7 +155,7 @@ export default function StockMovementsPage() {
           <p className="text-sm text-[var(--color-text-muted)]">{ar ? 'سندات التوريد والصرف والتحويل والجرد' : 'Stock in, stock out, transfers and stocktaking'}</p></div>
       </div>
       <div className="flex gap-2"><button className="btn-secondary flex items-center gap-2" onClick={() => void loadData()} disabled={loading || busy}><RefreshCw className="w-4 h-4" />{ar ? 'تحديث' : 'Refresh'}</button>
-        <button className="btn-primary flex items-center gap-2" onClick={() => { setShowForm(v => !v); setError(''); }} disabled={!schemaReady || warehouses.length === 0 || products.length === 0}><PackagePlus className="w-4 h-4" />{ar ? 'سند جديد' : 'New document'}</button></div>
+        <button className="btn-primary flex items-center gap-2 disabled:opacity-40" onClick={() => { setShowForm(v => !v); setError(''); }} disabled={!STOCK_WRITES_ENABLED || !schemaReady || warehouses.length === 0 || products.length === 0}><PackagePlus className="w-4 h-4" />{ar ? 'سند جديد' : 'New document'}</button></div>
     </div>
 
     {!schemaReady && <div className="rounded-xl border border-warning-400 bg-warning-50 p-4 text-sm text-warning-900 flex gap-3"><AlertCircle className="w-5 h-5 shrink-0" /><div><p className="font-semibold">{ar ? 'الحفظ والترحيل غير متاحين' : 'Save and posting are disabled'}</p><p>{schemaMessage || (ar ? 'لم يتم التحقق من جاهزية جداول السندات.' : 'Stock document schema has not been verified.')}</p><p className="mt-1">{ar ? 'هذا إجراء حماية مقصود حتى تُطبّق Migration في بيئة اختبار منفصلة وتُختبر العمليات.' : 'This is intentional until the migration is applied and tested in a separate test environment.'}</p></div></div>}
@@ -178,13 +181,13 @@ export default function StockMovementsPage() {
           {docType === 'count_adjustment' ? <label className="text-xs space-y-1"><span>{ar ? 'الكمية الفعلية بالجرد' : 'Counted quantity'}</span><input type="number" min="0" step="0.0001" className={inputClass} value={line.counted_quantity} onChange={e => setLines(v => v.map((l,i) => i===index ? {...l,counted_quantity:e.target.value}:l))} /></label> : <button type="button" className="text-sm text-error-600 self-end py-2" disabled={lines.length===1} onClick={() => setLines(v => v.filter((_,i)=>i!==index))}>{ar ? 'حذف السطر' : 'Remove line'}</button>}
         </div>)}
       </div>
-      <div className="flex justify-end gap-2"><button className="btn-secondary" onClick={resetForm} disabled={busy}>{ar ? 'إلغاء' : 'Cancel'}</button><button className="btn-primary flex items-center gap-2" onClick={() => void saveDraft()} disabled={!canSave || busy}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ المسودة' : 'Save draft'}</button></div>
+      <div className="flex justify-end gap-2"><button className="btn-secondary" onClick={resetForm} disabled={busy}>{ar ? 'إلغاء' : 'Cancel'}</button><button className="btn-primary flex items-center gap-2" onClick={() => void saveDraft()} disabled={!STOCK_WRITES_ENABLED || !canSave || busy}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}{ar ? 'حفظ المسودة' : 'Save draft'}</button></div>
     </section>}
 
     <section className="card p-0 overflow-hidden">
       <div className="p-4 border-b border-[var(--color-border)] flex items-center gap-2"><ClipboardCheck className="w-5 h-5" /><h3 className="font-semibold">{ar ? 'سجل السندات المخزنية' : 'Stock document register'}</h3></div>
       {loading ? <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div> : docs.length === 0 ? <div className="p-8 text-center text-sm text-[var(--color-text-muted)]">{schemaReady ? (ar ? 'لا توجد سندات حتى الآن.' : 'No stock documents yet.') : (ar ? 'ستظهر السندات بعد تجهيز الجداول في بيئة اختبار.' : 'Documents will appear after the schema is available in a test environment.')}</div> :
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-start border-b border-[var(--color-border)]"><th className="p-3 text-start">{ar ? 'رقم السند' : 'Document #'}</th><th className="p-3 text-start">{ar ? 'النوع' : 'Type'}</th><th className="p-3 text-start">{ar ? 'المستودع' : 'Warehouse'}</th><th className="p-3 text-start">{ar ? 'التاريخ' : 'Date'}</th><th className="p-3 text-start">{ar ? 'الحالة' : 'Status'}</th><th className="p-3 text-start">{ar ? 'الإجراء' : 'Action'}</th></tr></thead><tbody>{docs.map(doc => <tr key={doc.id} className="border-b border-[var(--color-border)]"><td className="p-3 font-medium">{doc.document_number}</td><td className="p-3">{typeLabel(doc.document_type)}</td><td className="p-3">{warehouseName(doc.warehouse_id)}{doc.to_warehouse_id ? <span className="block text-xs text-[var(--color-text-muted)]">{ar ? 'إلى: ' : 'To: '}{warehouseName(doc.to_warehouse_id)}</span> : null}</td><td className="p-3">{doc.document_date}</td><td className="p-3">{statusLabel(doc.status)}</td><td className="p-3">{doc.status === 'draft' ? <button className="btn-primary text-xs flex items-center gap-1" disabled={busy || !schemaReady} onClick={() => void postDocument(doc)}><Send className="w-3 h-3" />{ar ? 'اعتماد وترحيل' : 'Post'}</button> : <span className="text-xs text-[var(--color-text-muted)]">{doc.status === 'posted' ? (ar ? 'مقفول بعد الترحيل' : 'Locked after posting') : '—'}</span>}</td></tr>)}</tbody></table></div>}
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-start border-b border-[var(--color-border)]"><th className="p-3 text-start">{ar ? 'رقم السند' : 'Document #'}</th><th className="p-3 text-start">{ar ? 'النوع' : 'Type'}</th><th className="p-3 text-start">{ar ? 'المستودع' : 'Warehouse'}</th><th className="p-3 text-start">{ar ? 'التاريخ' : 'Date'}</th><th className="p-3 text-start">{ar ? 'الحالة' : 'Status'}</th><th className="p-3 text-start">{ar ? 'الإجراء' : 'Action'}</th></tr></thead><tbody>{docs.map(doc => <tr key={doc.id} className="border-b border-[var(--color-border)]"><td className="p-3 font-medium">{doc.document_number}</td><td className="p-3">{typeLabel(doc.document_type)}</td><td className="p-3">{warehouseName(doc.warehouse_id)}{doc.to_warehouse_id ? <span className="block text-xs text-[var(--color-text-muted)]">{ar ? 'إلى: ' : 'To: '}{warehouseName(doc.to_warehouse_id)}</span> : null}</td><td className="p-3">{doc.document_date}</td><td className="p-3">{statusLabel(doc.status)}</td><td className="p-3">{doc.status === 'draft' ? <button className="btn-primary text-xs flex items-center gap-1" disabled={!STOCK_WRITES_ENABLED || busy || !schemaReady} onClick={() => void postDocument(doc)}><Send className="w-3 h-3" />{ar ? 'اعتماد وترحيل' : 'Post'}</button> : <span className="text-xs text-[var(--color-text-muted)]">{doc.status === 'posted' ? (ar ? 'مقفول بعد الترحيل' : 'Locked after posting') : '—'}</span>}</td></tr>)}</tbody></table></div>}
     </section>
     <p className="text-xs text-[var(--color-text-muted)] flex items-start gap-2"><ArrowLeftRight className="w-4 h-4 shrink-0" />{ar ? 'التحويل يسجل حركة خروج ودخول مترابطتين. الجرد يعتمد الفرق بين الرصيد المحسوب والكمية الفعلية. لا توجد قيود محاسبية تلقائية لتسويات الجرد حتى يتم اعتماد خريطة حسابات واختبارها.' : 'Transfers create paired outgoing/incoming movements. Stocktaking compares book stock to counted quantity. Automatic GL entries for adjustments are not enabled until account mapping is reviewed and tested.'}</p>
   </div>;
