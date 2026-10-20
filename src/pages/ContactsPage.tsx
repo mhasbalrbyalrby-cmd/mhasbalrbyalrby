@@ -258,21 +258,7 @@ export default function ContactsPage() {
             </p>
           </div>
         </div>
-        <button type="button" onClick={() => {
-          const rows = parties.map((p) => ({
-            name: p.name, name_ar: p.name_ar ?? '', type: p.type, phone: p.phone ?? '',
-            email: p.email ?? '', address: p.address ?? '', city: p.city ?? '',
-            id_number: p.id_number ?? '', notes: p.notes ?? '',
-            roles: (partyRoles[p.id] ?? []).map((r) => r.role).join('|'),
-          }));
-          const headers = ['name','name_ar','type','phone','email','address','city','id_number','notes','roles'];
-          const esc = (v: unknown) => { const original = String(v ?? ''); const safe = /^[\\t\\r\\n ]*[=+\\-@]/.test(original) ? `'${original}` : original; return /[",\\r\\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe; };
-          const blob = new Blob(['\\uFEFF' + [headers, ...rows.map((row) => headers.map((h) => (row as Record<string,string>)[h] ?? ''))].map((row) => row.map(esc).join(',')).join('\\r\\n')], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-        }} disabled={parties.length === 0} className="btn-secondary flex items-center gap-2">
-          <Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
-        </button>
+        
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={exportContactsCsv} disabled={filtered.length === 0} className="btn-secondary flex items-center gap-2 disabled:opacity-50">
             <Download className="w-4 h-4" />
