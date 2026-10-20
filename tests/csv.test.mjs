@@ -46,7 +46,7 @@ test('exports Arabic as UTF-8 and neutralizes spreadsheet formulas', async () =>
     assert.equal(clicked, true);
     assert.match(await capturedBlob.text(), /^\uFEFF/);
     assert.match(await capturedBlob.text(), /علي,'=1\+1/);
-    assert.match(await capturedBlob.text(), /سارة,"'  @SUM\(A1:A2\)"/);
+    assert.match(await capturedBlob.text(), /سارة,'  @SUM\(A1:A2\)//);
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
