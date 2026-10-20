@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../lib/i18n-context';
 import { useAuth } from '../lib/auth-context';
 import { supabase } from '../lib/supabase';
-import type { ChartOfAccount, JournalEntry, JournalLine, AccountType } from './database';
+import type { ChartOfAccount, JournalEntry, JournalLine, AccountType } from '@/types/database';
 import Modal from '../components/Modal';
 import {
   Calculator, Plus, Search, Pencil, Trash2, Loader2,
