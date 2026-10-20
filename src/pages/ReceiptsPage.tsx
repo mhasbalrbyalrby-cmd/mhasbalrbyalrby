@@ -11,6 +11,8 @@ import {
   CheckCircle2, XCircle, Trash2, Download, Clock,
 } from 'lucide-react';
 
+const ACCOUNTING_WRITES_ENABLED = false; // Re-enable only after isolated database tests and approval.
+
 export default function ReceiptsPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -97,6 +99,10 @@ export default function ReceiptsPage() {
   }
 
   async function handleSave() {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      setError(lang === 'ar' ? 'حفظ السندات معطل مؤقتًا حتى اكتمال الاختبار على قاعدة تطوير معزولة.' : 'Receipt saves are disabled until isolated development-database tests are complete.');
+      return;
+    }
     if (!profile?.tenant_id) return;
     if (!form.party_id) { setError(lang === 'ar' ? 'اختر جهة' : 'Select party'); return; }
     if (form.amount <= 0) { setError(lang === 'ar' ? 'المبلغ يجب أن يكون أكبر من صفر' : 'Amount must be > 0'); return; }
@@ -138,6 +144,10 @@ export default function ReceiptsPage() {
   }
 
   async function postReceipt(r: Receipt) {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      alert(lang === 'ar' ? 'ترحيل السندات معطل حتى اجتياز اختبارات قاعدة التطوير المعزولة.' : 'Receipt posting is disabled until isolated development-database tests pass.');
+      return;
+    }
     if (!profile) return;
     const { data, error } = await supabase.rpc('post_receipt', { p_receipt_id: r.id });
     if (error) {
@@ -249,7 +259,7 @@ export default function ReceiptsPage() {
                       <div className="flex gap-1 justify-end">
                         {r.status === 'draft' && (
                           <>
-                            <button onClick={() => postReceipt(r)} className="btn-secondary !p-1.5 text-success-600" title={lang === 'ar' ? 'ترحيل' : 'Post'}><CheckCircle2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => postReceipt(r)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-success-600 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'الترحيل معطل مؤقتًا للاختبار' : 'Posting temporarily disabled for testing'}><CheckCircle2 className="w-3.5 h-3.5" /></button>
                             <button onClick={() => cancelReceipt(r)} className="btn-secondary !p-1.5 text-error-500" title={t('common.cancel')}><XCircle className="w-3.5 h-3.5" /></button>
                             <button onClick={() => deleteReceipt(r)} className="btn-secondary !p-1.5 text-error-500" title={t('common.delete')}><Trash2 className="w-3.5 h-3.5" /></button>
                           </>
@@ -397,7 +407,7 @@ export default function ReceiptsPage() {
           </div>
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
+            <button onClick={handleSave} disabled={saving || !ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button>
           </div>
         </div>
       </Modal>
