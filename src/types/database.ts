@@ -425,6 +425,7 @@ export interface Receipt {
   type: ReceiptType;
   party_id: string | null;
   date: string;
+  actual_receipt_date: string | null;
   amount: number;
   currency: string;
   exchange_rate: number;
@@ -472,7 +473,9 @@ export interface ExchangeTransfer {
   beneficiary_name: string;
   beneficiary_phone: string | null;
   amount: number;
-  currency: string;
+  amount_base: number | null;
+  cash_currency: string | null;
+  exchange_rate: number | null;
   commission: number;
   commission_currency: string;
   agent_id: string | null;
@@ -509,4 +512,54 @@ export interface BiometricLog {
   timestamp: string;
   status: string;
   created_at: string;
+}
+
+
+// Specialized module types backed by migrations 020 and 025.
+export interface FixedAsset {
+  id: string;
+  tenant_id: string;
+  asset_name: string;
+  asset_name_ar: string | null;
+  asset_code: string | null;
+  category: string | null;
+  purchase_date: string | null;
+  purchase_cost: number;
+  salvage_value: number;
+  useful_life_years: number;
+  depreciation_method: string;
+  annual_depreciation: number;
+  accumulated_depreciation: number;
+  current_value: number;
+  status: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZakatRecord {
+  id: string;
+  tenant_id: string;
+  hijri_year: string;
+  nisab_date: string | null;
+  nisab_hijri: string | null;
+  haul_start: string | null;
+  haul_end: string | null;
+  cash_amount: number;
+  receivables_amount: number;
+  inventory_amount: number;
+  other_amount: number;
+  total_zakat_base: number;
+  zakat_rate: number;
+  zakat_due: number;
+  zakat_paid: number;
+  payment_date: string | null;
+  payment_method: string | null;
+  payment_reference: string | null;
+  notes: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
