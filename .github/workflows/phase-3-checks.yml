@@ -1,0 +1,27 @@
+name: Phase 3 isolated checks
+
+on:
+  push:
+    branches:
+      - phase-3-fixes-2026-10-18
+  pull_request:
+    branches:
+      - phase-3-fixes-2026-10-18
+
+jobs:
+  typecheck-and-csv-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript typecheck
+        run: npm run typecheck
+      - name: CSV regression tests
+        run: node --test tests/csv.test.mjs
