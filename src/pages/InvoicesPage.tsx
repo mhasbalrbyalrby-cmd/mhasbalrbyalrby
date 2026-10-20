@@ -38,6 +38,8 @@ interface CashAccountOption {
   is_postable: boolean;
 }
 
+const ACCOUNTING_WRITES_ENABLED = false; // Re-enable only after isolated database tests and approval.
+
 export default function InvoicesPage() {
   const { t, lang } = useI18n();
   const { profile } = useAuth();
@@ -237,6 +239,10 @@ export default function InvoicesPage() {
     : null;
 
   async function handleSave() {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      setError(lang === 'ar' ? 'الحفظ المحاسبي معطل مؤقتًا حتى اكتمال الاختبار على قاعدة تطوير معزولة.' : 'Accounting saves are disabled until isolated development-database tests are complete.');
+      return;
+    }
     if (!profile?.tenant_id) return;
     if (!form.party_id) {
       setError(lang === 'ar' ? 'اختر جهة الاتصال' : 'Select a contact');
@@ -339,6 +345,10 @@ export default function InvoicesPage() {
   }
 
   async function postInvoice(inv: Invoice) {
+    if (!ACCOUNTING_WRITES_ENABLED) {
+      alert(lang === 'ar' ? 'الترحيل المحاسبي معطل حتى اجتياز اختبارات قاعدة التطوير المعزولة.' : 'Accounting posting is disabled until isolated development-database tests pass.');
+      return;
+    }
     if (!profile) return;
     const { data, error } = await supabase.rpc('post_invoice', { p_invoice_id: inv.id });
     if (error) { alert((error as Error).message); return; }
@@ -459,7 +469,7 @@ export default function InvoicesPage() {
                         <button onClick={() => viewInvoice(inv)} className="btn-secondary !p-1.5" title={lang === 'ar' ? 'عرض' : 'View'}><Eye className="w-3.5 h-3.5" /></button>
                         {inv.status === 'draft' && (
                           <>
-                            <button onClick={() => postInvoice(inv)} className="btn-secondary !p-1.5 text-success-600" title={lang === 'ar' ? 'ترحيل' : 'Post'}><CheckCircle2 className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => postInvoice(inv)} disabled={!ACCOUNTING_WRITES_ENABLED} className="btn-secondary !p-1.5 text-success-600 disabled:opacity-40 disabled:cursor-not-allowed" title={lang === 'ar' ? 'الترحيل معطل مؤقتًا للاختبار' : 'Posting temporarily disabled for testing'}><CheckCircle2 className="w-3.5 h-3.5" /></button>
                             <button onClick={() => cancelInvoice(inv)} className="btn-secondary !p-1.5 text-error-500" title={t('common.cancel')}><XCircle className="w-3.5 h-3.5" /></button>
                             <button onClick={() => deleteInvoice(inv)} className="btn-secondary !p-1.5 text-error-500" title={t('common.delete')}><Trash2 className="w-3.5 h-3.5" /></button>
                           </>
@@ -647,7 +657,7 @@ export default function InvoicesPage() {
 
           <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]">
             <button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button>
-            <button onClick={handleSave} disabled={saving || !invoiceSchemaReady} className="btn-primary flex items-center gap-2">
+            <button onClick={handleSave} disabled={saving || !invoiceSchemaReady || !ACCOUNTING_WRITES_ENABLED} className="btn-primary flex items-center gap-2">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}
             </button>
           </div>
