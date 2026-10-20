@@ -4,12 +4,14 @@ import { useI18n } from '@/lib/i18n-context';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import type { Product, Warehouse, UnitOfMeasure } from '@/lib/database';
-import { parseCSV, type CSVRow } from '@/lib/csv';
+import { exportToCSV, parseCSV, type CSVRow } from '@/lib/csv';
 import Modal from '@/components/Modal';
 import StockMovementsPage from '@/pages/StockMovementsPage';
 import {
   Package, Plus, Search, Loader2, AlertCircle, Pencil, Trash2, Download, Upload,
 } from 'lucide-react';
+
+const INVENTORY_WRITES_ENABLED = false; // Read-only until isolated database tests are approved.
 
 export default function InventoryPage() {
   const { t, lang } = useI18n();
@@ -115,6 +117,7 @@ export default function InventoryPage() {
   }
 
   async function handleAddUnit() {
+    if (!INVENTORY_WRITES_ENABLED) { setError(lang === 'ar' ? 'إضافة الوحدات معطلة مؤقتًا للاختبار الآمن.' : 'Adding units is temporarily disabled for safety testing.'); return; }
     const unitName = newUnitName.trim();
     if (!unitName) {
       setError(lang === 'ar' ? 'اسم الوحدة مطلوب.' : 'Unit name is required.');
@@ -148,6 +151,7 @@ export default function InventoryPage() {
   }
 
   async function handleSave() {
+    if (!INVENTORY_WRITES_ENABLED) { setError(lang === 'ar' ? 'حفظ الأصناف معطل مؤقتًا للاختبار الآمن.' : 'Saving products is temporarily disabled for safety testing.'); return; }
     if (!form.name.trim()) { setError(lang === 'ar' ? 'الاسم مطلوب' : 'Name is required'); return; }
     if (!tenant?.id || !profile?.id) { setError(lang === 'ar' ? 'تعذر تحديد المؤسسة أو المستخدم الحالي.' : 'The current organization or user could not be resolved.'); return; }
     const namedUnitsBeforeSave = form.type === 'product' ? productUnits.filter((u) => u.name.trim()) : [];
@@ -219,6 +223,7 @@ export default function InventoryPage() {
   }
 
   async function handleDelete(p: Product) {
+    if (!INVENTORY_WRITES_ENABLED) return;
     if (!confirm(lang === 'ar' ? 'حذف الصنف؟' : 'Delete item?')) return;
     const { error } = await supabase.from('products').delete().eq('id', p.id);
     if (!error) loadData();
@@ -264,6 +269,7 @@ export default function InventoryPage() {
   }
 
   async function confirmCsvImport() {
+    if (!INVENTORY_WRITES_ENABLED) { setError(lang === 'ar' ? 'استيراد الأصناف معطل مؤقتًا للاختبار الآمن.' : 'Product import is temporarily disabled for safety testing.'); return; }
     if (!tenant?.id || importErrors.length || !importRows.length) return;
     setImporting(true);
     setError('');
@@ -301,31 +307,11 @@ export default function InventoryPage() {
   function exportProductsCsv() {
     const headers = ['code', 'name', 'name_ar', 'type', 'barcode', 'cost_price', 'sale_price', 'min_stock', 'unit', 'category'];
     const rows = filtered.map((product) => [
-      product.code ?? '',
-      product.name,
-      product.name_ar ?? '',
-      product.type,
-      product.barcode ?? '',
-      product.cost_price,
-      product.sale_price,
-      product.min_stock,
-      units.find((unit) => unit.id === product.unit_id)?.name ?? '',
-      product.category ?? '',
+      product.code ?? '', product.name, product.name_ar ?? '', product.type, product.barcode ?? '',
+      product.cost_price, product.sale_price, product.min_stock,
+      units.find((unit) => unit.id === product.unit_id)?.name ?? '', product.category ?? '',
     ]);
-    const escapeCsv = (value: unknown) => {
-      const textValue = String(value ?? '');
-      return /[",\\r\\n]/.test(textValue) ? `"${textValue.replace(/"/g, '""')}"` : textValue;
-    };
-    const csv = '\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    exportToCSV(`products-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
   }
 
   const filtered = products.filter((p) =>
@@ -360,8 +346,8 @@ export default function InventoryPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={exportProductsCsv} disabled={filtered.length === 0} className="btn-secondary flex items-center gap-2 disabled:opacity-50"><Download className="w-4 h-4" />{lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}</button>
-          <label className="btn-secondary flex items-center gap-2 cursor-pointer"><Upload className="w-4 h-4" />{lang === 'ar' ? 'استيراد CSV' : 'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { void handleCsvFile(e.target.files?.[0]); e.currentTarget.value = ''; }} /></label>
-          <button type="button" onClick={openCreate} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
+          <label className={`btn-secondary flex items-center gap-2 ${INVENTORY_WRITES_ENABLED ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}><Upload className="w-4 h-4" />{lang === 'ar' ? 'استيراد CSV' : 'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" disabled={!INVENTORY_WRITES_ENABLED} onChange={(e) => { void handleCsvFile(e.target.files?.[0]); e.currentTarget.value = ''; }} /></label>
+          <button type="button" onClick={openCreate} disabled={!INVENTORY_WRITES_ENABLED} className="btn-primary flex items-center gap-2 disabled:opacity-40"><Plus className="w-4 h-4" />{lang === 'ar' ? 'صنف جديد' : 'New Item'}</button>
         </div>
       </div>
 
@@ -385,7 +371,7 @@ export default function InventoryPage() {
             <p className="text-sm text-[var(--color-text-muted)]">{lang === 'ar' ? `عدد الصفوف: ${importRows.length}. أسماء الأعمدة المطلوبة: name، ويمكن استخدام code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.` : `Rows: ${importRows.length}. Required column: name. Optional: code, name_ar, type, barcode, cost_price, sale_price, min_stock, unit, category.`}</p>
             {importErrors.length > 0 && <div role="alert" className="rounded-lg bg-error-50 dark:bg-error-900/30 p-3 text-sm text-error-700 dark:text-error-300"><strong>{lang === 'ar' ? `أخطاء التحقق (${importErrors.length})` : `Validation errors (${importErrors.length})`}</strong><ul className="list-disc ps-5 mt-2 max-h-40 overflow-auto">{importErrors.slice(0, 30).map((issue, i) => <li key={i}>{issue}</li>)}</ul></div>}
             <div className="overflow-x-auto max-h-56 border border-[var(--color-border)] rounded-lg"><table className="w-full text-xs"><thead><tr>{['code','name','type','barcode','cost_price','sale_price'].map((h) => <th key={h} className="p-2 text-start">{h}</th>)}</tr></thead><tbody>{importRows.slice(0, 8).map((row, i) => <tr key={i} className="border-t border-[var(--color-border)]">{['code','name','type','barcode','cost_price','sale_price'].map((h) => <td key={h} className="p-2">{row[h] ?? ''}</td>)}</tr>)}</tbody></table></div>
-            <div className="flex justify-end gap-2"><button type="button" onClick={() => setImportOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={() => void confirmCsvImport()} disabled={importing || importErrors.length > 0 || importRows.length === 0} className="btn-primary">{importing ? (lang === 'ar' ? 'جارٍ الاستيراد…' : 'Importing…') : (lang === 'ar' ? 'تأكيد الاستيراد' : 'Confirm import')}</button></div>
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setImportOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button type="button" onClick={() => void confirmCsvImport()} disabled={!INVENTORY_WRITES_ENABLED || importing || importErrors.length > 0 || importRows.length === 0} className="btn-primary disabled:opacity-40">{importing ? (lang === 'ar' ? 'جارٍ الاستيراد…' : 'Importing…') : (lang === 'ar' ? 'تأكيد الاستيراد' : 'Confirm import')}</button></div>
           </div>
         </Modal>
       )}
@@ -413,7 +399,7 @@ export default function InventoryPage() {
                   <td className="py-2 px-3"><span className={`text-xs px-2 py-0.5 rounded-full ${p.type === 'product' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-secondary-100 text-secondary-700 dark:bg-secondary-900/30 dark:text-secondary-400'}`}>{p.type === 'product' ? (lang === 'ar' ? 'منتج' : 'Product') : (lang === 'ar' ? 'خدمة' : 'Service')}</span></td>
                   <td className="py-2 px-3 text-end text-[var(--color-text-muted)]">{p.cost_price == null ? '—' : Number(p.cost_price).toFixed(2)}</td>
                   <td className="py-2 px-3 text-end font-medium text-[var(--color-text)]">{p.sale_price == null ? '—' : Number(p.sale_price).toFixed(2)}</td>
-                  <td className="py-2 px-3 text-end"><div className="flex gap-1 justify-end"><button type="button" onClick={() => openEdit(p)} aria-label={lang === 'ar' ? `تعديل الصنف ${p.name_ar ?? p.name}` : `Edit item ${p.name}`} className="btn-secondary !p-1.5"><Pencil className="w-3.5 h-3.5" /></button><button type="button" onClick={() => handleDelete(p)} aria-label={lang === 'ar' ? `حذف الصنف ${p.name_ar ?? p.name}` : `Delete item ${p.name}`} className="btn-secondary !p-1.5 text-error-500"><Trash2 className="w-3.5 h-3.5" /></button></div></td>
+                  <td className="py-2 px-3 text-end"><div className="flex gap-1 justify-end"><button type="button" onClick={() => openEdit(p)} disabled={!INVENTORY_WRITES_ENABLED} aria-label={lang === 'ar' ? `تعديل الصنف ${p.name_ar ?? p.name}` : `Edit item ${p.name}`} className="btn-secondary !p-1.5 disabled:opacity-40"><Pencil className="w-3.5 h-3.5" /></button><button type="button" onClick={() => handleDelete(p)} disabled={!INVENTORY_WRITES_ENABLED} aria-label={lang === 'ar' ? `حذف الصنف ${p.name_ar ?? p.name}` : `Delete item ${p.name}`} className="btn-secondary !p-1.5 text-error-500 disabled:opacity-40"><Trash2 className="w-3.5 h-3.5" /></button></div></td>
                 </tr>
               ))}
             </tbody>
@@ -456,7 +442,7 @@ export default function InventoryPage() {
                 <input type="text" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} placeholder={lang === 'ar' ? 'اسم الوحدة *' : 'Unit name *'} className="input-field" />
                 <input type="text" value={newUnitNameAr} onChange={(e) => setNewUnitNameAr(e.target.value)} placeholder={lang === 'ar' ? 'الاسم بالعربية (اختياري)' : 'Arabic name (optional)'} className="input-field" dir="rtl" />
                 <div className="flex justify-end">
-                  <button type="button" onClick={() => void handleAddUnit()} disabled={savingUnit} className="btn-primary">
+                  <button type="button" onClick={() => void handleAddUnit()} disabled={!INVENTORY_WRITES_ENABLED || savingUnit} className="btn-primary disabled:opacity-40">
                     {savingUnit ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : (lang === 'ar' ? 'حفظ الوحدة' : 'Save unit')}
                   </button>
                 </div>
@@ -472,7 +458,7 @@ export default function InventoryPage() {
             </div>)}
             <p className="text-xs text-[var(--color-text-muted)]">{lang === 'ar' ? 'اترك الأسعار فارغة إذا لم تكن محددة. معاملات التحويل موجبة، والباركود يمكن أن يختلف لكل عبوة.' : 'Leave prices blank when unknown. Conversion factors must be positive; each package may have its own barcode.'}</p>
           </div>
-          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
+          <div className="flex gap-2 justify-end pt-2 border-t border-[var(--color-border)]"><button onClick={() => setModalOpen(false)} className="btn-secondary">{t('common.cancel')}</button><button onClick={handleSave} disabled={!INVENTORY_WRITES_ENABLED || saving} className="btn-primary flex items-center gap-2 disabled:opacity-40">{saving && <Loader2 className="w-4 h-4 animate-spin" />}{t('common.save')}</button></div>
         </div>
       </Modal>
     </div>
