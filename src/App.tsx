@@ -26,60 +26,14 @@ import FuelPage from '@/pages/FuelPage';
 import FixedAssetsPage from '@/pages/FixedAssetsPage';
 import { Loader2, AlertCircle, UserX, LogOut } from 'lucide-react';
 
-const roleAliases: Record<string, string> = {
-  owner: 'owner',
-  مالك: 'owner',
-  'مالك النظام': 'owner',
-  admin: 'admin',
-  administrator: 'admin',
-  مدير: 'admin',
-  accountant: 'accountant',
-  محاسب: 'accountant',
-  manager: 'manager',
-  sales: 'sales',
-  مبيعات: 'sales',
-  purchasing: 'purchasing',
-  مشتريات: 'purchasing',
-  warehouse: 'warehouse',
-  مخازن: 'warehouse',
-  cashier: 'cashier',
-  'أمين صندوق': 'cashier',
-  exchange_agent: 'exchange_agent',
-  صراف: 'exchange_agent',
-  auditor: 'auditor',
-  مدقق: 'auditor',
-  employee: 'employee',
-  موظف: 'employee',
-};
-
-const roleModules: Record<string, string[]> = {
-  owner: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'inventory', 'exchange', 'reports', 'shifts', 'zakat', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help', 'owner', 'memory'],
-  admin: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'inventory', 'exchange', 'reports', 'shifts', 'zakat', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help'],
-  accountant: ['dashboard', 'contacts', 'invoices', 'receipts', 'accounting', 'reports', 'zakat', 'fixed_assets', 'settings', 'knowledge', 'help'],
-  manager: ['dashboard', 'contacts', 'invoices', 'receipts', 'inventory', 'exchange', 'reports', 'shifts', 'fuel', 'inheritance', 'fixed_assets', 'settings', 'knowledge', 'help'],
-  sales: ['dashboard', 'contacts', 'invoices', 'receipts', 'inventory', 'shifts', 'help'],
-  purchasing: ['dashboard', 'contacts', 'invoices', 'inventory', 'help'],
-  warehouse: ['dashboard', 'inventory', 'help'],
-  cashier: ['dashboard', 'receipts', 'shifts', 'exchange', 'help'],
-  exchange_agent: ['dashboard', 'exchange', 'shifts', 'help'],
-  auditor: ['dashboard', 'reports', 'accounting', 'knowledge', 'help'],
-  employee: ['dashboard', 'help'],
-};
-
-function canAccessModule(moduleCode: string, roleName: string, isOwner: boolean): boolean {
-  if (moduleCode === 'owner' || moduleCode === 'memory') return isOwner;
-  const normalizedRole = isOwner
-    ? 'owner'
-    : roleAliases[roleName.trim().toLowerCase()] ?? 'employee';
-  return (roleModules[normalizedRole] ?? roleModules.employee).includes(moduleCode);
-}
+import { canAccessModule, normalizeRoleName } from '@/lib/module-access';
 
 function AppContent() {
   const { user, loading, configError, authError, authReady, signOut, isOwner, role } = useAuth();
   const [activeModule, setActiveModule] = useState('dashboard');
   const [guestTour, setGuestTour] = useState(false);
 
-  const roleName = isOwner ? 'owner' : roleAliases[role?.name?.trim().toLowerCase() ?? ''] ?? roleAliases[role?.name_ar?.trim().toLowerCase() ?? ''] ?? 'employee';
+  const roleName = normalizeRoleName(role?.name, role?.name_ar, isOwner);
   const safeActiveModule = canAccessModule(activeModule, roleName, isOwner) ? activeModule : 'dashboard';
   const navigateToAllowedModule = (moduleCode: string) => {
     setActiveModule(canAccessModule(moduleCode, roleName, isOwner) ? moduleCode : 'dashboard');
