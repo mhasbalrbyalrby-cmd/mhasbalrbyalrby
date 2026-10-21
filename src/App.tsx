@@ -26,17 +26,19 @@ import FuelPage from '@/pages/FuelPage';
 import FixedAssetsPage from '@/pages/FixedAssetsPage';
 import { Loader2, AlertCircle, UserX, LogOut } from 'lucide-react';
 
-import { canAccessModule, normalizeRoleName } from '@/lib/module-access';
+import { normalizeRoleName } from '@/lib/module-access';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 function AppContent() {
-  const { user, loading, configError, authError, authReady, signOut, isOwner, role } = useAuth();
+  const { user, loading, configError, authError, authReady, signOut, isOwner, role, profile } = useAuth();
   const [activeModule, setActiveModule] = useState('dashboard');
   const [guestTour, setGuestTour] = useState(false);
 
   const roleName = normalizeRoleName(role?.name, role?.name_ar, isOwner);
-  const safeActiveModule = canAccessModule(activeModule, roleName, isOwner) ? activeModule : 'dashboard';
+  const { canAccess } = useModuleAccess(profile?.tenant_id, roleName, isOwner);
+  const safeActiveModule = canAccess(activeModule) ? activeModule : 'dashboard';
   const navigateToAllowedModule = (moduleCode: string) => {
-    setActiveModule(canAccessModule(moduleCode, roleName, isOwner) ? moduleCode : 'dashboard');
+    setActiveModule(canAccess(moduleCode) ? moduleCode : 'dashboard');
   };
 
   if (guestTour) {
