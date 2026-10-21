@@ -79,7 +79,7 @@ function AppContent() {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [guestTour, setGuestTour] = useState(false);
 
-  const roleName = role?.name?.trim() || role?.name_ar?.trim() || 'employee';
+  const roleName = isOwner ? 'owner' : roleAliases[role?.name?.trim().toLowerCase() ?? ''] ?? roleAliases[role?.name_ar?.trim().toLowerCase() ?? ''] ?? 'employee';
   const safeActiveModule = canAccessModule(activeModule, roleName, isOwner) ? activeModule : 'dashboard';
   const navigateToAllowedModule = (moduleCode: string) => {
     setActiveModule(canAccessModule(moduleCode, roleName, isOwner) ? moduleCode : 'dashboard');
