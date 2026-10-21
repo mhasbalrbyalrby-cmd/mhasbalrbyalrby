@@ -50,3 +50,19 @@ export function canAccessModule(moduleCode: string, roleName: string, isOwner: b
   const normalizedRole = isOwner ? 'owner' : roleName;
   return (roleModules[normalizedRole] ?? roleModules.employee).includes(moduleCode);
 }
+
+
+/** Optional modules are denied unless entitlement data loaded successfully and the module is enabled. */
+export const addonModuleCodes = ['zakat', 'fuel', 'inheritance'] as const;
+
+export function canAccessModuleWithEntitlements(
+  moduleCode: string,
+  roleName: string,
+  isOwner: boolean,
+  enabledAddonCodes: ReadonlySet<string>,
+  entitlementsLoaded: boolean,
+): boolean {
+  if (!canAccessModule(moduleCode, roleName, isOwner)) return false;
+  if (isOwner || !addonModuleCodes.includes(moduleCode as (typeof addonModuleCodes)[number])) return true;
+  return entitlementsLoaded && enabledAddonCodes.has(moduleCode);
+}
