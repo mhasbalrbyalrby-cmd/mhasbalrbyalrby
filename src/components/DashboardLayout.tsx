@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useI18n } from '@/lib/i18n-context';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
@@ -8,8 +8,8 @@ import {
   Shield, BookOpen, Brain, Menu, X, Sun, Moon, Contrast, Globe,
   LogOut, ChevronDown, HelpCircle, HandCoins, ScrollText, Fuel, Building,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { normalizeRoleName, roleModules } from '@/lib/module-access';
+import { normalizeRoleName } from '@/lib/module-access';
+import { useModuleAccess } from '@/lib/use-module-access';
 
 interface NavItem {
   code: string;
@@ -51,42 +51,9 @@ export default function DashboardLayout({ activeModule, onNavigate, children }: 
   const { profile, tenant, isOwner, role, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [enabledAddons, setEnabledAddons] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!profile?.tenant_id) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('tenant_modules')
-        .select('module_id, is_enabled, modules!inner(code)')
-        .eq('tenant_id', profile.tenant_id!)
-        .eq('is_enabled', true);
-      if (cancelled || !data) return;
-      const rows = (data ?? []) as { module_id: string; is_enabled: boolean; modules: { code: string }[] | { code: string } }[];
-      const codes = new Set<string>();
-      rows.forEach((tm) => {
-        const mod = Array.isArray(tm.modules) ? tm.modules[0] : tm.modules;
-        if (mod?.code) codes.add(mod.code);
-      });
-      setEnabledAddons(codes);
-    })();
-    return () => { cancelled = true; };
-  }, [profile?.tenant_id]);
-
   const roleName = normalizeRoleName(role?.name, role?.name_ar, isOwner);
-
-  const ADDON_CODES = new Set(['zakat', 'fuel', 'inheritance']);
-  const isModuleEnabled = (code: string) => {
-    if (!ADDON_CODES.has(code)) return true;
-    if (isOwner) return true;
-    return enabledAddons.has(code);
-  };
-
-  const allowedModules = roleModules[roleName] ?? roleModules.employee;
-  const visibleItems = navItems.filter((item) =>
-    (!item.ownerOnly || isOwner) && allowedModules.includes(item.code) && isModuleEnabled(item.code)
-  );
+  const { canAccess } = useModuleAccess(profile?.tenant_id, roleName, isOwner);
+  const visibleItems = navItems.filter((item) => canAccess(item.code));
   const activeItem = visibleItems.find((i) => i.code === activeModule);
 
   return (
