@@ -18,19 +18,23 @@ export function useModuleAccess(
 ) {
   const [enabledAddons, setEnabledAddons] = useState<Set<string>>(() => new Set());
   const [entitlementsLoaded, setEntitlementsLoaded] = useState(false);
+  const [entitlementsTenantId, setEntitlementsTenantId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setEnabledAddons(new Set());
+    setEntitlementsTenantId(null);
 
     if (isOwner || !tenantId) {
       setEntitlementsLoaded(true);
+      setEntitlementsTenantId(tenantId ?? null);
       return () => { cancelled = true; };
     }
 
     setEntitlementsLoaded(false);
     if (!supabase) {
       setEntitlementsLoaded(true);
+      setEntitlementsTenantId(tenantId);
       return () => { cancelled = true; };
     }
 
@@ -46,6 +50,7 @@ export function useModuleAccess(
         // Empty set plus loaded=true intentionally denies all optional modules.
         setEnabledAddons(new Set());
         setEntitlementsLoaded(true);
+        setEntitlementsTenantId(tenantId);
         return;
       }
 
@@ -57,14 +62,16 @@ export function useModuleAccess(
         }
       });
       setEnabledAddons(codes);
+      setEntitlementsTenantId(tenantId);
       setEntitlementsLoaded(true);
     })();
 
     return () => { cancelled = true; };
   }, [tenantId, isOwner]);
 
+  const currentEntitlementsLoaded = isOwner || !tenantId || (entitlementsLoaded && entitlementsTenantId === tenantId);
   const canAccess = (moduleCode: string) =>
-    canAccessModuleWithEntitlements(moduleCode, roleName, isOwner, enabledAddons, entitlementsLoaded);
+    canAccessModuleWithEntitlements(moduleCode, roleName, isOwner, enabledAddons, currentEntitlementsLoaded);
 
-  return { canAccess, entitlementsLoaded };
+  return { canAccess, entitlementsLoaded: currentEntitlementsLoaded };
 }
